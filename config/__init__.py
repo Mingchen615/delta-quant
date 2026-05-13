@@ -1,0 +1,45 @@
+"""
+Delta Quant - 13 Agent量化交易系统
+异步架构的加密货币量化交易框架
+"""
+
+__version__ = "8.0.0"
+__author__ = "Delta Quant Team"
+
+from .settings import (
+    BINANCE_API_KEY,
+    BINANCE_API_SECRET,
+    BINANCE_TESTNET,
+    DEEPSEEK_API_KEY,
+    RISK_PER_TRADE,
+    RISK_PER_DAY,
+    MAX_DRAWDOWN,
+    MAX_POSITIONS,
+    BASE_LEVERAGE,
+    MAX_LEVERAGE,
+    SCAN_INTERVAL,
+    SCAN_TOP_N,
+    SIGNAL_THRESHOLD_MAIN,
+    SIGNAL_THRESHOLD_ALT,
+    HARD_STOP_LOSS,
+    TIME_STOP_SECONDS,
+)
+
+__all__ = [
+    "BINANCE_API_KEY",
+    "BINANCE_API_SECRET", 
+    "BINANCE_TESTNET",
+    "DEEPSEEK_API_KEY",
+    "RISK_PER_TRADE",
+    "RISK_PER_DAY",
+    "MAX_DRAWDOWN",
+    "MAX_POSITIONS",
+    "BASE_LEVERAGE",
+    "MAX_LEVERAGE",
+    "SCAN_INTERVAL",
+    "SCAN_TOP_N",
+    "SIGNAL_THRESHOLD_MAIN",
+    "SIGNAL_THRESHOLD_ALT",
+    "HARD_STOP_LOSS",
+    "TIME_STOP_SECONDS",
+]

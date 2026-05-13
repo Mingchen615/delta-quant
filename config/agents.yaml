@@ -1,0 +1,159 @@
+# Delta Quant Agent配置文件
+# 各Agent的独立参数配置
+
+# =============================================================================
+# 数据采集层Agent配置
+# =============================================================================
+
+# 1. 新闻数据 Agent
+news_agent:
+  name: "新闻数据"
+  log_prefix: "[新闻数据]"
+  interval: 60  # 60秒检查一次
+  enabled: true
+  sentiment_threshold: 0.3  # 情绪阈值
+  cache_ttl: 300  # 缓存5分钟
+
+# 2. 鲸鱼地址监控 Agent
+whale_agent:
+  name: "鲸鱼监控"
+  log_prefix: "[鲸鱼监控]"
+  interval: 5  # 5秒检查一次
+  enabled: true
+  threshold_usdt: 500000  # 50万USDT
+  history_window: 100  # 保留最近100条记录
+
+# 3. 品种相关性计算 Agent
+correlation_agent:
+  name: "相关性计算"
+  log_prefix: "[相关性计算]"
+  interval: 300  # 5分钟
+  enabled: true
+  lookback: 100
+  top_n: 40
+  correlation_threshold: 0.7
+
+# 4. 订单流 Agent
+orderflow_agent:
+  name: "订单流"
+  log_prefix: "[订单流]"
+  interval: 3  # 3秒
+  enabled: true
+  depth: 20
+  imbalance_threshold: 0.3
+
+# 5. 市场状态 Agent
+regime_agent:
+  name: "市场状态"
+  log_prefix: "[市场状态]"
+  interval: 60  # 1分钟
+  enabled: true
+  adx_trend: 25
+  adx_ranging: 20
+  atr_multiplier: 2.0
+
+# =============================================================================
+# 分析决策层Agent配置
+# =============================================================================
+
+# 6. 信号趋势 Agent
+signal_agent:
+  name: "信号趋势"
+  log_prefix: "[信号趋势]"
+  interval: 300  # 5分钟
+  enabled: true
+  scan_top_n: 40
+  threshold_main: 52
+  threshold_alt: 62
+  factors:
+    trend: 0.20
+    momentum: 0.15
+    volatility: 0.10
+    volume: 0.15
+    open_interest: 0.10
+    funding_rate: 0.05
+    liquidation: 0.10
+    mtf: 0.10
+    sentiment: 0.05
+
+# 7. 多空辩论 Agent
+debate_agent:
+  name: "多空辩论"
+  log_prefix: "[多空辩论]"
+  enabled: true
+  confidence_threshold: 60
+  timeout: 30
+  max_retries: 2
+
+# 8. 仓位决策 Agent
+decision_agent:
+  name: "仓位决策"
+  log_prefix: "[仓位决策]"
+  enabled: true
+  base_leverage: 20
+  max_leverage: 50
+  leverage_step: 5
+  kelly_fraction: 1.0  # Kelly公式系数
+  risk_per_trade: 0.03
+
+# =============================================================================
+# 风控执行层Agent配置
+# =============================================================================
+
+# 9. 风控检查 Agent
+risk_agent:
+  name: "风控检查"
+  log_prefix: "[风控检查]"
+  enabled: true
+  max_risk_per_trade: 0.03  # 3%
+  max_risk_per_day: 0.05    # 5%
+  max_drawdown: 0.20        # 20%
+
+# 10. 组合优化 Agent
+portfolio_agent:
+  name: "组合优化"
+  log_prefix: "[组合优化]"
+  enabled: true
+  max_positions: 2
+  correlation_limit: 0.7
+  heat_threshold: 0.8
+
+# 11. 订单执行 Agent
+executor_agent:
+  name: "订单执行"
+  log_prefix: "[订单执行]"
+  enabled: true
+  slippage: 0.0005  # 0.05%
+  timeout: 10
+  retry_times: 3
+
+# =============================================================================
+# 持仓复盘层Agent配置
+# =============================================================================
+
+# 12. 持仓监控 Agent
+position_agent:
+  name: "持仓监控"
+  log_prefix: "[持仓监控]"
+  enabled: true
+  check_interval: 1  # 1秒
+  hard_stop_loss: -0.25
+  soft_stop_loss: -0.05
+  time_stop_seconds: 180
+  trailing_trigger_r: 1
+  trailing_distance_r: 1
+  targets:
+    - ratio: 2
+      close_pct: 0.3  # 30%
+    - ratio: 3
+      close_pct: 0.3
+    - ratio: 5
+      close_pct: 0.4  # 40%
+
+# 13. 复盘统计 Agent
+review_agent:
+  name: "复盘统计"
+  log_prefix: "[复盘统计]"
+  enabled: true
+  report_interval: 86400  # 每天
+  min_trades_for_stats: 10  # 最少10笔交易才统计
