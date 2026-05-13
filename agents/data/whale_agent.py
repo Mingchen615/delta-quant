@@ -42,7 +42,7 @@ class WhaleAgent(BaseAgent):
             symbols = ["BTC/USDT", "ETH/USDT", "BNB/USDT"]
             
             for symbol in symbols:
-                trades = await binance_client.fetch_agg_trades(symbol, limit=20)
+                trades = await binance_client.fetch_trades(symbol, limit=20)
                 
                 if not trades:
                     continue

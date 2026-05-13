@@ -61,9 +61,9 @@ class BinanceClient:
         return self.exchange
 
     async def _rate_limited(self, func, *args, **kwargs):
-        """限速包装"""
+        """限速包装 - ccxt.async_support方法本身就是协程，直接await"""
         async with self._rate_limit:
-            return await asyncio.to_thread(func, *args, **kwargs)
+            return await func(*args, **kwargs)
 
     async def fetch_markets(self) -> List[Dict]:
         """获取交易对信息"""
@@ -103,13 +103,13 @@ class BinanceClient:
         """获取订单簿"""
         return await self._rate_limited(self._get_exchange().fetch_order_book, symbol, limit)
 
-    async def fetch_agg_trades(
+    async def fetch_trades(
         self,
         symbol: str,
         limit: int = 50
     ) -> List[Dict]:
-        """获取聚合成交"""
-        return await self._rate_limited(self._get_exchange().fetch_agg_trades, symbol, None, limit)
+        """获取最近成交"""
+        return await self._rate_limited(self._get_exchange().fetch_trades, symbol, limit)
 
     async def fetch_balance(self) -> Dict:
         """获取账户余额"""
