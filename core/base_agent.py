@@ -215,7 +215,7 @@ class BaseAgent(ABC):
                 
     async def _heartbeat_loop(self):
         """心跳循环"""
-        from ..core.event_types import AgentStatusEvent
+        from core.event_types import AgentStatusEvent
         
         while self._running:
             try:
@@ -251,7 +251,7 @@ class BaseAgent(ABC):
         
     async def _publish_status(self, state: str, error: Optional[str] = None):
         """发布状态事件"""
-        from ..core.event_types import AgentStatusEvent
+        from core.event_types import AgentStatusEvent
         
         await self.bus.publish(
             "agent.status",

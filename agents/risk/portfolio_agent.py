@@ -129,3 +129,11 @@ class PortfolioAgent(BaseAgent):
             "utilization": len(self._current_positions) / MAX_POSITIONS,
             "directions": self._position_directions.copy(),
         }
+
+    async def execute(self):
+        """
+        执行Agent逻辑 - 事件驱动型，execute为空实现
+        实际逻辑通过订阅的事件触发
+        """
+        # PortfolioAgent是事件驱动型，等待下一个执行周期
+        await asyncio.sleep(self.config.interval)

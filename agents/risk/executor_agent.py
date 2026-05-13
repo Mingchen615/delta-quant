@@ -231,3 +231,11 @@ class ExecutorAgent(BaseAgent):
     def get_paper_engine(self) -> PaperTradeEngine:
         """获取模拟引擎"""
         return self._paper_engine
+
+    async def execute(self):
+        """
+        执行Agent逻辑 - 事件驱动型，execute为空实现
+        实际逻辑通过订阅的事件触发
+        """
+        # ExecutorAgent是事件驱动型，等待下一个执行周期
+        await asyncio.sleep(self.config.interval)
