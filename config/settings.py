@@ -51,7 +51,7 @@ def _get_config(key, default=""):
 # =============================================================================
 BINANCE_API_KEY = _get_config("BINANCE_API_KEY", "")
 BINANCE_API_SECRET = _get_config("BINANCE_API_SECRET", "")
-BINANCE_TESTNET = True  # 默认开启模拟盘
+BINANCE_TESTNET = False  # 默认开启模拟盘
 
 # Testnet API endpoints
 BINANCE_TESTNET_API = "https://testnet.binance.vision/api"
