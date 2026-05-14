@@ -10,10 +10,47 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 
 # =============================================================================
+# .env 文件读取（手写解析，优先于环境变量）
+# =============================================================================
+def _load_env_file():
+    """从项目根目录的 .env 文件读取配置"""
+    env_path = PROJECT_ROOT / ".env"
+    env_vars = {}
+    
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                # 跳过空行和注释
+                if not line or line.startswith("#"):
+                    continue
+                # 解析 KEY=VALUE 格式
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    env_vars[key.strip()] = value.strip()
+    
+    return env_vars
+
+# 读取 .env 文件
+_dotenv = _load_env_file()
+
+def _get_config(key, default=""):
+    """获取配置：.env > 环境变量 > 默认值"""
+    # 1. 优先从 .env 文件读取
+    if key in _dotenv and _dotenv[key]:
+        return _dotenv[key]
+    # 2. 其次从环境变量读取
+    env_value = os.getenv(key)
+    if env_value:
+        return env_value
+    # 3. 最后使用默认值
+    return default
+
+# =============================================================================
 # 币安API配置
 # =============================================================================
-BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
-BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
+BINANCE_API_KEY = _get_config("BINANCE_API_KEY", "")
+BINANCE_API_SECRET = _get_config("BINANCE_API_SECRET", "")
 BINANCE_TESTNET = True  # 默认开启模拟盘
 
 # Testnet API endpoints
@@ -23,7 +60,7 @@ BINANCE_TESTNET_WS = "wss://testnet.binance.vision/ws"
 # =============================================================================
 # DeepSeek API配置
 # =============================================================================
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_API_KEY = _get_config("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
@@ -67,7 +104,7 @@ TP3_RATIO = 5              # 第三止盈目标 (5R+)
 # =============================================================================
 # 新闻数据配置
 # =============================================================================
-CRYPTOPANIC_API_KEY = os.getenv("CRYPTOPANIC_API_KEY", "")
+CRYPTOPANIC_API_KEY = _get_config("CRYPTOPANIC_API_KEY", "")
 CRYPTOPANIC_API_URL = "https://cryptopanic.com/api/free/v1/posts/"
 
 # =============================================================================
@@ -102,62 +139,59 @@ LOG_FORMAT = (
 # =============================================================================
 # Agent运行配置
 # =============================================================================
-AGENT_RESTART_MAX = 3      # Agent最大重启次数
-AGENT_HEARTBEAT_INTERVAL = 30  # 心跳间隔 (秒)
-AGENT_STATUS_REPORT_INTERVAL = 10  # 状态报告间隔 (秒)
+AGENT_RESTART_MAX = 3          # Agent最大重启次数
+AGENT_HEARTBEAT_INTERVAL = 30   # 心跳检测间隔 (秒)
+AGENT_STATUS_REPORT_INTERVAL = 60  # 状态上报间隔 (秒)
 
 # =============================================================================
 # 技术指标参数
 # =============================================================================
-EMA_SHORT = 20
-EMA_MID = 50
-EMA_LONG = 200
-RSI_PERIOD = 14
-MACD_FAST = 12
-MACD_SLOW = 26
-MACD_SIGNAL = 9
-BOLL_PERIOD = 20
-BOLL_STD = 2
-ATR_PERIOD = 14
-ADX_PERIOD = 14
+EMA_SHORT = 9          # 短期EMA周期
+EMA_MID = 21           # 中期EMA周期
+EMA_LONG = 55          # 长期EMA周期
+RSI_PERIOD = 14        # RSI周期
+MACD_FAST = 12         # MACD快线周期
+MACD_SLOW = 26         # MACD慢线周期
+MACD_SIGNAL = 9        # MACD信号线周期
+BOLL_PERIOD = 20       # 布林带周期
+BOLL_STD = 2           # 布林带标准差倍数
+ATR_PERIOD = 14        # ATR周期
+ADX_PERIOD = 14        # ADX周期
 
 # =============================================================================
 # 多时间框架配置
 # =============================================================================
-MTF_TIMEFRAMES = ["15m", "1h", "4h"]
-MTF_WEIGHTS = {"15m": 0.2, "1h": 0.3, "4h": 0.5}  # 权重
+MTF_TIMEFRAMES = ["1h", "4h", "1d"]  # 多时间框架列表
+MTF_WEIGHTS = {"1h": 0.2, "4h": 0.3, "1d": 0.5}  # 各周期权重
 
 # =============================================================================
 # 相关性计算配置
 # =============================================================================
-CORRELATION_LOOKBACK = 100  # 相关性回溯K线数
-CORRELATION_THRESHOLD = 0.7  # 高相关性阈值
-SECTOR_THRESHOLD = 0.6      # 板块强度阈值
+CORRELATION_LOOKBACK = 100      # 相关性计算回溯周期
+CORRELATION_THRESHOLD = 0.7     # 相关性阈值
+SECTOR_THRESHOLD = 0.6         # 板块相关性阈值
 
 # =============================================================================
 # 市场状态阈值
 # =============================================================================
-ADX_TREND_THRESHOLD = 25   # 趋势市ADX阈值
-ADX_RANGING_THRESHOLD = 20 # 震荡市ADX阈值
-ATR_MULTIPLIER_HIGH = 2.0   # 高波动ATR倍数
+ADX_TREND_THRESHOLD = 25        # 趋势市场ADX阈值
+ADX_RANGING_THRESHOLD = 20      # 震荡市场ADX阈值
+ATR_MULTIPLIER_HIGH = 2.0       # 高波动ATR倍数
 
 # =============================================================================
 # 辩论Agent配置
 # =============================================================================
-DEBATE_CONFIDENCE_THRESHOLD = 60  # 辩论置信度阈值
-DEBATE_TIMEOUT = 30         # 辩论超时 (秒)
+DEBATE_CONFIDENCE_THRESHOLD = 0.6  # 辩论置信度阈值
+DEBATE_TIMEOUT = 30             # 辩论超时时间 (秒)
 
 # =============================================================================
 # 信号因子权重
 # =============================================================================
 FACTOR_WEIGHTS = {
-    "trend": 0.20,          # 趋势因子
-    "momentum": 0.15,       # 动量因子
-    "volatility": 0.10,     # 波动率因子
-    "volume": 0.15,         # 成交量因子
-    "open_interest": 0.10,  # 持仓量因子
-    "funding_rate": 0.05,   # 资金费率因子
-    "liquidation": 0.10,    # 清算因子
-    "mtf": 0.10,            # 多时间框架因子
-    "sentiment": 0.05,      # 情绪因子
+    "delta": 0.25,
+    "momentum": 0.20,
+    "whale": 0.15,
+    "orderflow": 0.15,
+    "sentiment": 0.15,
+    "correlation": 0.10,
 }
