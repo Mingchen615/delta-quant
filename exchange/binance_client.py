@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 from loguru import logger
 
-from config import BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET
+from config import BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET, USE_PROXY, PROXY_URL
 
 
 class BinanceClient:
@@ -55,6 +55,15 @@ class BinanceClient:
                 },
             }
 
+            # 代理配置（国内用户本地Windows需要开启，云电脑默认关闭）
+            if USE_PROXY:
+                config["aiohttp_proxy"] = PROXY_URL
+                config["proxies"] = {
+                    "http": PROXY_URL,
+                    "https": PROXY_URL,
+                }
+                logger.info(f"[币安客户端] 代理已启用: {PROXY_URL}")
+
             if self.testnet:
                 config["testnet"] = True
                 config["urls"] = {
@@ -64,6 +73,7 @@ class BinanceClient:
             else:
                 # 国内使用 binance.me 域名直连（api.binance.com 被墙）
                 # binance.me的合约API被Cloudflare拦截，只使用现货API
+                # 注意：所有API类型都需要明确配置，确保sapi接口也正确路由
                 config["urls"] = {
                     "api": {
                         "public": "https://api.binance.me/api/v3",

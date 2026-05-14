@@ -53,6 +53,10 @@ BINANCE_API_KEY = _get_config("BINANCE_API_KEY", "")
 BINANCE_API_SECRET = _get_config("BINANCE_API_SECRET", "")
 BINANCE_TESTNET = False  # 默认开启模拟盘
 
+# 代理配置（国内用户本地Windows需要开启）
+USE_PROXY = _get_config("USE_PROXY", "false").lower() == "true"
+PROXY_URL = _get_config("PROXY_URL", "http://127.0.0.1:7890")
+
 # Testnet API endpoints
 BINANCE_TESTNET_API = "https://testnet.binance.vision/api"
 BINANCE_TESTNET_WS = "wss://testnet.binance.vision/ws"
