@@ -89,6 +89,9 @@ from .settings import (
     DEBATE_TIMEOUT,
     # 信号因子权重
     FACTOR_WEIGHTS,
+    # 代理配置
+    USE_PROXY,
+    PROXY_URL,
 )
 
 __all__ = [
@@ -174,4 +177,7 @@ __all__ = [
     "DEBATE_TIMEOUT",
     # 信号因子权重
     "FACTOR_WEIGHTS",
+    # 代理配置
+    "USE_PROXY",
+    "PROXY_URL",
 ]
