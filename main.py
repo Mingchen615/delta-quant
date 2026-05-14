@@ -365,8 +365,10 @@ async def main():
     def signal_handler():
         asyncio.create_task(system.stop())
         
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, signal_handler)
+    import platform
+    if platform.system() != "Windows":
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, signal_handler)
         
     try:
         await system.start()
