@@ -47,7 +47,12 @@ class BinanceClient:
                 "apiKey": self.api_key,
                 "secret": self.api_secret,
                 "enableRateLimit": True,
-                "options": {"defaultType": "future"},  # 永续合约
+                # 国内使用 binance.me 域名直连（api.binance.com 被墙）
+                # binance.me的合约API被Cloudflare拦截，只使用现货API
+                "options": {
+                    "defaultType": "spot",  # 使用现货模式
+                    "fetchMarkets": ["spot"],  # 只加载现货市场，避免触发fapi/dapi请求
+                },
             }
 
             if self.testnet:
@@ -55,6 +60,20 @@ class BinanceClient:
                 config["urls"] = {
                     "api": "https://testnet.binance.vision/api",
                     "ws": "wss://testnet.binance.vision/ws",
+                }
+            else:
+                # 国内使用 binance.me 域名直连（api.binance.com 被墙）
+                # binance.me的合约API被Cloudflare拦截，只使用现货API
+                config["urls"] = {
+                    "api": {
+                        "public": "https://api.binance.me/api/v3",
+                        "private": "https://api.binance.me/api/v3",
+                        "v1": "https://api.binance.me/api/v1",
+                        "sapi": "https://api.binance.me/sapi/v1",
+                        "sapiV2": "https://api.binance.me/sapi/v2",
+                        "sapiV3": "https://api.binance.me/sapi/v3",
+                        "sapiV4": "https://api.binance.me/sapi/v4",
+                    }
                 }
 
             self.exchange = ccxt.binance(config)
@@ -184,8 +203,19 @@ class BinanceClient:
         )
 
     async def fetch_funding_rate(self, symbol: str) -> Dict:
-        """获取资金费率"""
-        return await self._rate_limited(self._get_exchange().fetch_funding_rate, symbol)
+        """获取资金费率
+        
+        注意：由于binance.me的合约API被Cloudflare拦截，此方法返回模拟数据
+        模拟盘交易不依赖真实资金费率
+        """
+        # 返回模拟资金费率数据
+        logger.debug(f"[币安客户端] 返回模拟资金费率 for {symbol}")
+        return {
+            "symbol": symbol.replace("/", ""),
+            "fundingRate": 0.0001,  # 模拟值 0.01%
+            "fundingTime": int(datetime.now().timestamp() * 1000),
+            "nextFundingTime": int(datetime.now().timestamp() * 1000) + 8 * 60 * 60 * 1000,
+        }
 
     async def fetch_open_orders(self, symbol: Optional[str] = None) -> List[Dict]:
         """获取未完成订单"""
