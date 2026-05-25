@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - Delta Quant</title>
+    <link rel="stylesheet" href="/static/common.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-logo">Delta Quant</div>
+            <div class="login-sub">双平台量化交易系统 v9.0</div>
+
+            <form onsubmit="login(event)">
+                <input type="password" id="password" class="login-input" placeholder="输入访问密码" autofocus autocomplete="current-password">
+                <button type="submit" class="login-btn">进入系统</button>
+            </form>
+            <div id="login-error" class="login-error"></div>
+        </div>
+    </div>
+
+    <script>
+        // 已登录则直接跳转
+        if (localStorage.getItem('dq_token')) {
+            window.location.href = '/paper';
+        }
+
+        async function login(e) {
+            e.preventDefault();
+            const password = document.getElementById('password').value;
+            const errDiv = document.getElementById('login-error');
+            errDiv.textContent = '';
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('dq_token', data.token);
+                    window.location.href = '/paper';
+                } else {
+                    errDiv.textContent = data.error || '密码错误';
+                }
+            } catch (err) {
+                errDiv.textContent = '连接失败: ' + err.message;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -163,22 +163,43 @@ class ReviewAgent(BaseAgent):
         )
         
     def _calculate_stats(self, trades: List[TradeRecord]) -> Dict:
-        """计算统计数据"""
+        """计算统计数据（v3增强：ATR止损统计）"""
         if not trades:
             return {}
-            
+
         total = len(trades)
         wins = sum(1 for t in trades if t.pnl > 0)
         losses = sum(1 for t in trades if t.pnl < 0)
-        
+
         total_pnl = sum(t.pnl for t in trades)
-        
+
         win_trades = [t for t in trades if t.pnl > 0]
         loss_trades = [t for t in trades if t.pnl < 0]
-        
+
         avg_win = sum(t.pnl for t in win_trades) / len(win_trades) if win_trades else 0
         avg_loss = abs(sum(t.pnl for t in loss_trades)) / len(loss_trades) if loss_trades else 0
-        
+
+        # v3: 按平仓原因统计
+        close_reasons = {}
+        for t in trades:
+            reason = getattr(t, 'close_reason', 'unknown') or 'unknown'
+            if reason not in close_reasons:
+                close_reasons[reason] = {'count': 0, 'wins': 0, 'pnl': 0}
+            close_reasons[reason]['count'] += 1
+            close_reasons[reason]['pnl'] += t.pnl
+            if t.pnl > 0:
+                close_reasons[reason]['wins'] += 1
+
+        # v3: ATR止损命中率
+        atr_stop_trades = [t for t in trades if getattr(t, 'close_reason', '') == 'ATR止损']
+        atr_stop_count = len(atr_stop_trades)
+
+        # v3: 按方向统计
+        long_trades = [t for t in trades if t.direction == 'long']
+        short_trades = [t for t in trades if t.direction == 'short']
+        long_win_rate = sum(1 for t in long_trades if t.pnl > 0) / len(long_trades) if long_trades else 0
+        short_win_rate = sum(1 for t in short_trades if t.pnl > 0) / len(short_trades) if short_trades else 0
+
         return {
             "total_trades": total,
             "wins": wins,
@@ -188,12 +209,20 @@ class ReviewAgent(BaseAgent):
             "avg_win": avg_win,
             "avg_loss": avg_loss,
             "profit_factor": avg_win / avg_loss if avg_loss > 0 else 0,
+            # v3新增统计
+            "close_reasons": close_reasons,
+            "atr_stop_count": atr_stop_count,
+            "atr_stop_rate": atr_stop_count / total if total > 0 else 0,
+            "long_trades": len(long_trades),
+            "short_trades": len(short_trades),
+            "long_win_rate": long_win_rate,
+            "short_win_rate": short_win_rate,
         }
         
     def _format_report(self, date: str, trades: List[TradeRecord], stats: Dict) -> str:
-        """格式化报告"""
+        """格式化报告（v3增强）"""
         lines = []
-        
+
         lines.append(f"交易次数: {stats.get('total_trades', 0)}")
         lines.append(f"盈利次数: {stats.get('wins', 0)}")
         lines.append(f"亏损次数: {stats.get('losses', 0)}")
@@ -202,7 +231,21 @@ class ReviewAgent(BaseAgent):
         lines.append(f"平均盈利: ${stats.get('avg_win', 0):.2f}")
         lines.append(f"平均亏损: ${stats.get('avg_loss', 0):.2f}")
         lines.append(f"盈亏比: {stats.get('profit_factor', 0):.2f}")
-        
+
+        # v3: 方向胜率对比
+        lines.append(f"\n--- v3统计 ---")
+        lines.append(f"做多胜率: {stats.get('long_win_rate', 0)*100:.1f}% ({stats.get('long_trades', 0)}笔)")
+        lines.append(f"做空胜率: {stats.get('short_win_rate', 0)*100:.1f}% ({stats.get('short_trades', 0)}笔)")
+        lines.append(f"ATR止损命中: {stats.get('atr_stop_count', 0)}次 ({stats.get('atr_stop_rate', 0)*100:.1f}%)")
+
+        # v3: 按平仓原因统计
+        close_reasons = stats.get('close_reasons', {})
+        if close_reasons:
+            lines.append("\n平仓原因分布:")
+            for reason, data in close_reasons.items():
+                reason_wr = data['wins'] / data['count'] * 100 if data['count'] > 0 else 0
+                lines.append(f"  {reason}: {data['count']}笔 胜率{reason_wr:.0f}% 盈亏${data['pnl']:.2f}")
+
         lines.append("\n交易明细:")
         for trade in trades:
             pnl_str = f"+${trade.pnl:.2f}" if trade.pnl >= 0 else f"-${abs(trade.pnl):.2f}"
@@ -211,7 +254,7 @@ class ReviewAgent(BaseAgent):
                 f"开${trade.entry_price:.4f} 平${trade.exit_price:.4f} "
                 f"{trade.close_reason} {pnl_str}"
             )
-            
+
         return "\n".join(lines)
         
     async def get_all_stats(self) -> Dict:

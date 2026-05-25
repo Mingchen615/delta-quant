@@ -75,50 +75,56 @@ class PortfolioAgent(BaseAgent):
         """执行组合检查"""
         symbol = result.symbol
         direction = result.proposal.direction
-        
-        # 1. 检查仓位数量
+
+        # 1. 检查仓位数量（v3: 最大3个）
         if len(self._current_positions) >= MAX_POSITIONS:
             self.logger.warning(f"仓位数已达上限({MAX_POSITIONS})")
             return False
-            
+
         # 2. 检查同向高相关持仓
         if direction in ["long", "short"]:
             for pos_symbol, pos_dir in self._position_directions.items():
                 if pos_dir == direction:
-                    # 检查相关性（简化：同板块或同向动量）
                     if self._is_highly_correlated(symbol, pos_symbol):
                         self.logger.warning(
                             f"{symbol} 与 {pos_symbol} 相关性过高且同向"
                         )
                         return False
-                        
-        # 3. 账户热度检查（简化）
-        # 持仓越多，热度越高，新开仓越谨慎
-        if len(self._current_positions) >= MAX_POSITIONS - 1:
-            if result.proposal.signal_score < 70:
-                self.logger.info(f"账户热度高，低分信号跳过")
+
+        # v3: 3. 检查方向冲突（新仓与现仓不能完全对立）
+        if direction in ["long", "short"]:
+            opposite = "short" if direction == "long" else "long"
+            opposite_count = sum(1 for d in self._position_directions.values() if d == opposite)
+            if opposite_count >= 2:
+                self.logger.warning(
+                    f"方向冲突: 现有{opposite_count}个{opposite}仓，新开{direction}仓被拒绝"
+                )
                 return False
-                
+
+        # 4. 账户热度检查
+        if len(self._current_positions) >= MAX_POSITIONS - 1:
+            if result.proposal.signal_score < 55:
+                self.logger.info(f"账户热度高，低分信号({result.proposal.signal_score:.1f})跳过")
+                return False
+
         return True
         
     def _is_highly_correlated(self, symbol1: str, symbol2: str) -> bool:
         """
         检查两个币种是否高度相关
-        简化实现：同板块或BTC/ETH高度相关
+        只有BTC和ETH之间视为高度相关
         """
-        # 同板块币种
-        def get_sector(symbol: str) -> str:
-            s = symbol.replace("/USDT", "")
-            if s in ["BTC", "ETH"]:
-                return "core"
-            elif s in ["BNB", "SOL", "AVAX", "ADA"]:
-                return "layer1"
-            elif s in ["UNI", "AAVE", "MKR"]:
-                return "defi"
-            else:
-                return "other"
-                
-        return get_sector(symbol1) == get_sector(symbol2)
+        def get_base(symbol: str) -> str:
+            return symbol.split("/")[0] if "/" in symbol else symbol
+
+        base1 = get_base(symbol1)
+        base2 = get_base(symbol2)
+
+        # BTC和ETH高度相关
+        if {base1, base2} == {"BTC", "ETH"}:
+            return True
+        # 同币种
+        return base1 == base2
         
     def get_portfolio_status(self) -> Dict:
         """获取组合状态"""

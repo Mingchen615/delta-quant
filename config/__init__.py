@@ -3,7 +3,7 @@ Delta Quant - 13 Agent量化交易系统
 异步架构的加密货币量化交易框架
 """
 
-__version__ = "8.0.0"
+__version__ = "9.0.0"
 __author__ = "Delta Quant Team"
 
 from .settings import (
@@ -92,6 +92,22 @@ from .settings import (
     # 代理配置
     USE_PROXY,
     PROXY_URL,
+    # v9.0 双平台配置
+    LIVE_TRADE,
+    set_live_trade,
+    toggle_live_trade,
+    OKX_API_KEY,
+    OKX_API_SECRET,
+    OKX_PASSPHRASE,
+    BINANCE_FEE_RATE,
+    OKX_FEE_RATE,
+    DEFAULT_EXCHANGE,
+    ARBITRAGE_THRESHOLD,
+    ARBITRAGE_INTERVAL,
+    WEB_HOST,
+    WEB_PORT,
+    MASTER_PASSWORD,
+    TRADING_V3,
 )
 
 __all__ = [
@@ -180,4 +196,20 @@ __all__ = [
     # 代理配置
     "USE_PROXY",
     "PROXY_URL",
+    # v9.0 双平台配置
+    "LIVE_TRADE",
+    "set_live_trade",
+    "toggle_live_trade",
+    "OKX_API_KEY",
+    "OKX_API_SECRET",
+    "OKX_PASSPHRASE",
+    "BINANCE_FEE_RATE",
+    "OKX_FEE_RATE",
+    "DEFAULT_EXCHANGE",
+    "ARBITRAGE_THRESHOLD",
+    "ARBITRAGE_INTERVAL",
+    "WEB_HOST",
+    "WEB_PORT",
+    "MASTER_PASSWORD",
+    "TRADING_V3",
 ]

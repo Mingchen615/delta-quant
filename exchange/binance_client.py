@@ -72,8 +72,7 @@ class BinanceClient:
                 }
             else:
                 # 国内使用 binance.me 域名直连（api.binance.com 被墙）
-                # binance.me的合约API被Cloudflare拦截，只使用现货API
-                # 注意：所有API类型都需要明确配置，确保sapi接口也正确路由
+                # 如果 binance.me 也被墙，需要开启代理 USE_PROXY=true
                 config["urls"] = {
                     "api": {
                         "public": "https://api.binance.me/api/v3",
@@ -83,6 +82,12 @@ class BinanceClient:
                         "sapiV2": "https://api.binance.me/sapi/v2",
                         "sapiV3": "https://api.binance.me/sapi/v3",
                         "sapiV4": "https://api.binance.me/sapi/v4",
+                        "fapiPublic": "https://fapi.binance.me/fapi/v1",
+                        "fapiPublicDelivery": "https://dapi.binance.me/dapi/v1",
+                        "fapiPrivate": "https://fapi.binance.me/fapi/v1",
+                        "fapiPrivateV2": "https://fapi.binance.me/fapi/v2",
+                        "dapiPublic": "https://dapi.binance.me/dapi/v1",
+                        "dapiPrivate": "https://dapi.binance.me/dapi/v1",
                     }
                 }
 

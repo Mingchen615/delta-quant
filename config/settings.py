@@ -73,14 +73,14 @@ DEEPSEEK_MODEL = "deepseek-chat"
 # =============================================================================
 RISK_PER_TRADE = 0.03       # 单笔最大亏损 (3%)
 RISK_PER_DAY = 0.05         # 日最大亏损 (5%)
-MAX_DRAWDOWN = 0.20         # 最大回撤 (20%)
-MAX_POSITIONS = 2           # 最大同时持仓数
+MAX_DRAWDOWN = 0.15         # 最大回撤 (15%, v3收紧)
+MAX_POSITIONS = 3           # 最大同时持仓数 (v3调整)
 
 # =============================================================================
 # 杠杆参数
 # =============================================================================
-BASE_LEVERAGE = 20         # 基础杠杆
-MAX_LEVERAGE = 50          # 最大杠杆
+BASE_LEVERAGE = 5          # 基础杠杆 (v3降低)
+MAX_LEVERAGE = 20          # 最大杠杆 (v3硬上限)
 LEVERAGE_STEP = 5          # 杠杆步进
 
 # =============================================================================
@@ -88,8 +88,8 @@ LEVERAGE_STEP = 5          # 杠杆步进
 # =============================================================================
 SCAN_INTERVAL = 300        # 主扫描间隔 (秒, 5分钟)
 SCAN_TOP_N = 40            # 扫描Top N币种
-SIGNAL_THRESHOLD_MAIN = 52 # 主流币信号阈值
-SIGNAL_THRESHOLD_ALT = 62  # 山寨币信号阈值
+SIGNAL_THRESHOLD_MAIN = 45 # 主流币信号阈值
+SIGNAL_THRESHOLD_ALT = 50  # 山寨币信号阈值
 
 # =============================================================================
 # 止损止盈参数
@@ -185,7 +185,7 @@ ATR_MULTIPLIER_HIGH = 2.0       # 高波动ATR倍数
 # =============================================================================
 # 辩论Agent配置
 # =============================================================================
-DEBATE_CONFIDENCE_THRESHOLD = 0.6  # 辩论置信度阈值
+DEBATE_CONFIDENCE_THRESHOLD = 0.5  # 辩论置信度阈值 (0.5=中性，低于此值拒绝)
 DEBATE_TIMEOUT = 30             # 辩论超时时间 (秒)
 
 # =============================================================================
@@ -198,4 +198,86 @@ FACTOR_WEIGHTS = {
     "orderflow": 0.15,
     "sentiment": 0.15,
     "correlation": 0.10,
+}
+
+# =============================================================================
+# v9.0 - 双平台配置
+# =============================================================================
+
+# 实盘模式开关（运行时可切换）
+LIVE_TRADE = _get_config("LIVE_TRADE", "false").lower() == "true"
+
+def set_live_trade(value: bool):
+    """运行时切换实盘/模拟盘模式"""
+    global LIVE_TRADE
+    LIVE_TRADE = value
+    import logging
+    logging.getLogger("config").warning(
+        f"{'🔴 实盘模式' if value else '🟢 模拟盘模式'} 已启用"
+    )
+
+def toggle_live_trade() -> bool:
+    """切换模式，返回新模式"""
+    set_live_trade(not LIVE_TRADE)
+    return LIVE_TRADE
+
+# 欧易API配置
+OKX_API_KEY = _get_config("OKX_API_KEY", "")
+OKX_API_SECRET = _get_config("OKX_API_SECRET", "")
+OKX_PASSPHRASE = _get_config("OKX_PASSPHRASE", "")
+
+# 手续费率
+BINANCE_FEE_RATE = 0.0004   # 币安合约手续费 0.04%
+OKX_FEE_RATE = 0.0005        # OKX合约手续费 0.05%
+
+# 默认交易所选择: "auto" / "binance" / "okx"
+DEFAULT_EXCHANGE = _get_config("DEFAULT_EXCHANGE", "auto")
+
+# 套利配置
+ARBITRAGE_THRESHOLD = 0.003   # 套利价差阈值 0.3%（含手续费）
+ARBITRAGE_INTERVAL = 1        # 套利检查间隔（秒）
+
+# Web服务配置
+WEB_HOST = _get_config("WEB_HOST", "0.0.0.0")
+WEB_PORT = int(_get_config("WEB_PORT", "8000"))
+
+# 加密存储主密码（生产环境从环境变量获取）
+MASTER_PASSWORD = _get_config("MASTER_PASSWORD", "")
+
+# =============================================================================
+# v3.0 交易规则配置
+# =============================================================================
+TRADING_V3 = {
+    # 开仓门槛
+    'min_signal_strength': 70,      # 信号强度阈值
+    'min_vol_ratio': 1.0,           # 成交量门槛
+    'min_adx': 20,                  # ADX趋势强度门槛
+
+    # 止损止盈
+    'atr_sl_multiplier': 1.5,       # ATR止损倍数
+    'atr_tp_multiplier': 3.0,       # ATR止盈倍数
+    'atr_period': 14,               # ATR计算周期
+    'sl_min_pct': 0.01,             # 止损下限1%
+    'sl_max_pct': 0.05,             # 止损上限5%
+    'tp_min_pct': 0.02,             # 止盈下限2%
+    'tp_max_pct': 0.15,             # 止盈上限15%
+
+    # 移动止盈
+    'trailing_trigger': 0.50,       # 盈利50%激活
+    'trailing_step': 0.30,          # 回撤30%平仓
+
+    # 杠杆
+    'base_leverage': 5,             # 基础杠杆5x
+    'max_leverage': 20,             # 硬上限20x
+
+    # 仓位
+    'max_position_pct': 0.10,       # 单笔最大10%
+
+    # 风控
+    'daily_loss_limit': 0.05,       # 日亏5%停
+    'max_drawdown': 0.15,           # 回撤15%停
+    'max_positions': 3,             # 最大3持仓
+
+    # RSI背离周期
+    'rsi_divergence_lookback': 20,  # RSI背离用20根K线对比
 }

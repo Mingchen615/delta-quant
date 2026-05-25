@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delta Quant v9.0 - 双平台量化交易系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #0a0f1a; color: #e2e8f0; font-family: 'Segoe UI', 'PingFang SC', sans-serif; margin: 0; }
+        .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 20px; }
+        .card-header { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #f9fafb; display: flex; align-items: center; gap: 8px; }
+        .btn { padding: 8px 16px; border-radius: 8px; cursor: pointer; border: none; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; }
+        .btn:hover { transform: translateY(-1px); }
+        .btn-blue { background: #3b82f6; color: white; }
+        .btn-blue:hover { background: #2563eb; }
+        .btn-green { background: #22c55e; color: white; }
+        .btn-green:hover { background: #16a34a; }
+        .btn-red { background: #ef4444; color: white; }
+        .btn-red:hover { background: #dc2626; }
+        .btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #374151; }
+        .btn-ghost:hover { background: #1f2937; color: white; }
+        .input { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 8px 12px; color: white; width: 100%; font-size: 0.875rem; }
+        .input:focus { outline: none; border-color: #3b82f6; }
+        select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+        .green { color: #4ade80; }
+        .red { color: #f87171; }
+        .yellow { color: #facc15; }
+        .gray { color: #6b7280; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        table { width: 100%; border-collapse: collapse; }
+        th { padding: 8px 12px; text-align: left; color: #6b7280; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; border-bottom: 1px solid #1f2937; }
+        td { padding: 10px 12px; border-bottom: 1px solid #1f2937; font-size: 0.875rem; }
+        tr:hover { background: #1f2937; }
+        .nav { background: #111827; border-bottom: 1px solid #1f2937; padding: 0 24px; display: flex; align-items: center; height: 56px; position: sticky; top: 0; z-index: 50; }
+        .nav-brand { font-size: 1.125rem; font-weight: 700; color: white; }
+        .nav-links { display: flex; gap: 4px; margin-left: 32px; }
+        .nav-link { padding: 8px 16px; border-radius: 8px; color: #94a3b8; text-decoration: none; font-size: 0.875rem; transition: all 0.2s; }
+        .nav-link:hover, .nav-link.active { background: #1f2937; color: white; }
+        .ticker-row { display: flex; gap: 24px; padding: 12px 0; overflow-x: auto; }
+        .ticker-item { display: flex; align-items: center; gap: 12px; min-width: 140px; }
+        .ticker-symbol { font-weight: 600; font-size: 0.875rem; }
+        .ticker-price { font-size: 1rem; font-weight: 600; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+        .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+        @media (max-width: 768px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+        .stat-value { font-size: 1.5rem; font-weight: 700; }
+        .stat-label { font-size: 0.75rem; color: #6b7280; margin-top: 4px; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+        .badge-green { background: #064e3b; color: #6ee7b7; }
+        .badge-red { background: #7f1d1d; color: #fca5a5; }
+        .badge-yellow { background: #78350f; color: #fde68a; }
+        .badge-blue { background: #1e3a5f; color: #93c5fd; }
+        .toast { position: fixed; top: 72px; right: 24px; padding: 12px 20px; border-radius: 8px; font-size: 0.875rem; z-index: 100; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .toast-success { background: #064e3b; color: #6ee7b7; border: 1px solid #10b981; }
+        .toast-error { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; }
+        #activity-log::-webkit-scrollbar, #order-list::-webkit-scrollbar { width: 4px; }
+        #activity-log::-webkit-scrollbar-track, #order-list::-webkit-scrollbar-track { background: #111827; }
+        #activity-log::-webkit-scrollbar-thumb, #order-list::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="nav">
+        <div class="nav-brand">Delta Quant <span class="text-blue-400 text-sm font-normal">v9.0</span></div>
+        <div class="nav-links">
+            <a href="/" class="nav-link active">总览</a>
+            <a href="/connect" class="nav-link">接入交易所</a>
+        </div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:12px;">
+            <!-- 模式切换 -->
+            <div id="mode-toggle" style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleMode()">
+                <span id="mode-label" class="badge badge-green">PAPER</span>
+                <div style="width:40px; height:20px; border-radius:10px; background:#374151; position:relative; transition:background 0.3s;">
+                    <div id="mode-knob" style="width:16px; height:16px; border-radius:50%; background:white; position:absolute; top:2px; left:2px; transition:left 0.3s;"></div>
+                </div>
+            </div>
+            <span id="system-badge" class="badge badge-green">运行中</span>
+            <span id="clock" class="text-sm text-gray-400"></span>
+        </div>
+    </nav>
+
+    <div style="max-width:1400px; margin:0 auto; padding:20px 24px;">
+
+        <!-- 实时行情条 -->
+        <div class="card" style="margin-bottom:16px; padding:12px 20px;">
+            <div class="ticker-row" id="ticker-bar">
+                <span class="gray">加载行情...</span>
+            </div>
+        </div>
+
+        <!-- 核心指标 -->
+        <div class="grid-4" style="margin-bottom:16px;">
+            <div class="card">
+                <div class="stat-label">总资产</div>
+                <div class="stat-value" id="total-balance">--</div>
+                <div class="stat-label" id="balance-detail">可用: --</div>
+            </div>
+            <div class="card">
+                <div class="stat-label">未实现盈亏</div>
+                <div class="stat-value" id="total-pnl">--</div>
+                <div class="stat-label" id="pnl-detail">持仓: 0</div>
+            </div>
+            <div class="card">
+                <div class="stat-label">活跃Agent</div>
+                <div class="stat-value" id="active-agents">--</div>
+                <div class="stat-label" id="agent-detail">运行中: --</div>
+            </div>
+            <div class="card">
+                <div class="stat-label">交易所</div>
+                <div class="stat-value" id="connected-exchanges">--</div>
+                <div class="stat-label" id="exchange-detail">已接入: --</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <!-- 左列 -->
+            <div>
+                <!-- 交易所状态 -->
+                <div class="card" style="margin-bottom:16px;">
+                    <div class="card-header">交易所连接</div>
+                    <div id="exchange-list" class="text-gray-400">加载中...</div>
+                </div>
+
+                <!-- 当前持仓 -->
+                <div class="card" style="margin-bottom:16px;">
+                    <div class="card-header">
+                        当前持仓
+                        <span id="position-count" class="badge badge-blue" style="margin-left:auto;">0</span>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>平台</th>
+                                    <th>币对</th>
+                                    <th>方向</th>
+                                    <th>杠杆</th>
+                                    <th>数量</th>
+                                    <th>入场价</th>
+                                    <th>标记价</th>
+                                    <th>盈亏</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positions-body">
+                                <tr><td colspan="8" class="text-center gray">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Agent状态 -->
+                <div class="card">
+                    <div class="card-header">Agent监控</div>
+                    <div id="agent-grid" class="grid-3">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 右列 -->
+            <div>
+                <!-- 快速交易 -->
+                <div class="card" style="margin-bottom:16px;">
+                    <div class="card-header">快速交易</div>
+                    <div class="grid-2" style="margin-bottom:12px;">
+                        <div>
+                            <label class="text-xs text-gray-400">币对</label>
+                            <select id="t-symbol" class="input">
+                                <option>BTC/USDT</option>
+                                <option>ETH/USDT</option>
+                                <option>SOL/USDT</option>
+                                <option>BNB/USDT</option>
+                                <option>XRP/USDT</option>
+                                <option>DOGE/USDT</option>
+                                <option>ADA/USDT</option>
+                                <option>AVAX/USDT</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400">方向</label>
+                            <select id="t-side" class="input">
+                                <option value="buy">做多 (Buy)</option>
+                                <option value="sell">做空 (Sell)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid-3" style="margin-bottom:12px;">
+                        <div>
+                            <label class="text-xs text-gray-400">数量</label>
+                            <input type="number" id="t-amount" class="input" step="0.001" placeholder="0.001">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400">杠杆</label>
+                            <select id="t-leverage" class="input">
+                                <option>3</option>
+                                <option>5</option>
+                                <option selected>10</option>
+                                <option>20</option>
+                                <option>50</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400">平台</label>
+                            <select id="t-exchange" class="input">
+                                <option value="auto">自动</option>
+                                <option value="binance">币安</option>
+                                <option value="okx">欧易</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid-2" style="margin-bottom:12px;">
+                        <div>
+                            <label class="text-xs text-gray-400">保证金模式</label>
+                            <select id="t-margin" class="input">
+                                <option value="cross">全仓</option>
+                                <option value="isolated">逐仓</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400">订单类型</label>
+                            <select id="t-type" class="input">
+                                <option value="market">市价</option>
+                                <option value="limit">限价</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="limit-price-row" style="display:none; margin-bottom:12px;">
+                        <label class="text-xs text-gray-400">限价</label>
+                        <input type="number" id="t-price" class="input" step="0.01" placeholder="输入价格">
+                    </div>
+                    <button onclick="executeTrade()" class="btn btn-green" style="width:100%; padding:12px; font-size:1rem;">
+                        执行交易
+                    </button>
+                    <div id="trade-result" style="margin-top:8px; font-size:0.8rem;"></div>
+                </div>
+
+                <!-- 风控指标 -->
+                <div class="card" style="margin-bottom:16px;">
+                    <div class="card-header">风控状态</div>
+                    <div class="grid-2" style="margin-bottom:12px;">
+                        <div>
+                            <div class="text-xs gray">日盈亏</div>
+                            <div id="risk-daily-pnl" class="text-lg font-bold">--</div>
+                        </div>
+                        <div>
+                            <div class="text-xs gray">持仓数</div>
+                            <div id="risk-positions" class="text-lg font-bold">--</div>
+                        </div>
+                    </div>
+                    <div class="grid-2">
+                        <div>
+                            <div class="text-xs gray">日亏损限额</div>
+                            <div class="text-sm">5% <span class="gray">(三级熔断)</span></div>
+                        </div>
+                        <div>
+                            <div class="text-xs gray">最大回撤</div>
+                            <div class="text-sm">20% <span class="gray">(全面停机)</span></div>
+                        </div>
+                    </div>
+                    <div style="margin-top:16px; padding-top:12px; border-top:1px solid #1f2937;">
+                        <button onclick="emergencyClose()" class="btn btn-red" style="width:100%;">
+                            紧急全平所有持仓
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Agent信号 -->
+                <div class="card" style="margin-bottom:16px;">
+                    <div class="card-header">最新信号</div>
+                    <div id="signals-list" class="text-gray-400">暂无信号</div>
+                </div>
+
+                <!-- Agent活动日志 -->
+                <div class="card" style="margin-bottom:16px;">
+                    <div class="card-header">
+                        Agent活动
+                        <span id="activity-count" class="badge badge-blue" style="margin-left:auto;">0</span>
+                    </div>
+                    <div id="activity-log" style="max-height:300px; overflow-y:auto; font-size:0.8rem;">
+                        <span class="gray">等待Agent运行...</span>
+                    </div>
+                </div>
+
+                <!-- 订单记录 -->
+                <div class="card">
+                    <div class="card-header">
+                        订单记录
+                        <span id="order-count" class="badge badge-blue" style="margin-left:auto;">0</span>
+                    </div>
+                    <div id="order-list" style="max-height:250px; overflow-y:auto; font-size:0.8rem;">
+                        <span class="gray">暂无订单</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 时钟
+        function updateClock() {
+            document.getElementById('clock').textContent = new Date().toLocaleTimeString('zh-CN');
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // 限价单切换
+        document.getElementById('t-type').addEventListener('change', function() {
+            document.getElementById('limit-price-row').style.display = this.value === 'limit' ? 'block' : 'none';
+        });
+
+        // Toast通知
+        function showToast(msg, type = 'success') {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+            const div = document.createElement('div');
+            div.className = `toast toast-${type}`;
+            div.textContent = msg;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 3000);
+        }
+
+        // 加载行情
+        async function loadTickers() {
+            try {
+                const res = await fetch('/api/tickers');
+                const data = await res.json();
+                const bar = document.getElementById('ticker-bar');
+                let html = '';
+                const icons = { 'BTC/USDT': '₿', 'ETH/USDT': 'Ξ', 'SOL/USDT': '◎', 'BNB/USDT': '◆', 'XRP/USDT': '✕', 'DOGE/USDT': 'Ð', 'ADA/USDT': '₳', 'AVAX/USDT': '▲' };
+                for (const [sym, info] of Object.entries(data)) {
+                    const short = sym.replace('/USDT', '');
+                    const icon = icons[sym] || '●';
+                    const color = info.price > 0 ? 'white' : 'gray';
+                    html += `
+                        <div class="ticker-item">
+                            <span style="font-size:1.2rem">${icon}</span>
+                            <div>
+                                <div class="ticker-symbol">${short}</div>
+                                <div class="ticker-price" style="color:${color}">$${info.price.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+                            </div>
+                        </div>`;
+                }
+                bar.innerHTML = html || '<span class="gray">暂无行情数据</span>';
+            } catch (e) {}
+        }
+
+        // 加载状态
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+
+                // 交易所
+                const exDiv = document.getElementById('exchange-list');
+                let exHtml = '';
+                let connectedCount = 0;
+                if (data.exchanges) {
+                    for (const [name, info] of Object.entries(data.exchanges)) {
+                        const icon = name === 'binance' ? '🟡' : '🔵';
+                        const label = name === 'binance' ? '币安 Binance' : '欧易 OKX';
+                        if (info.connected) connectedCount++;
+                        const badge = info.connected
+                            ? '<span class="badge badge-green">已连接</span>'
+                            : '<span class="badge badge-red">未连接</span>';
+                        exHtml += `
+                            <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid #1f2937;">
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <span style="font-size:1.5rem">${icon}</span>
+                                    <span>${label}</span>
+                                </div>
+                                ${badge}
+                            </div>`;
+                    }
+                }
+                exDiv.innerHTML = exHtml || '<span class="gray">无交易所</span>';
+
+                // Agent
+                const agentDiv = document.getElementById('agent-grid');
+                let agentHtml = '';
+                let runningCount = 0;
+                if (data.agents) {
+                    for (const [name, info] of Object.entries(data.agents)) {
+                        if (info.state === 'running') runningCount++;
+                        const badge = info.state === 'running'
+                            ? '<span class="badge badge-green">运行</span>'
+                            : info.state === 'failed'
+                            ? '<span class="badge badge-red">异常</span>'
+                            : '<span class="badge badge-yellow">等待</span>';
+                        let lastExec = '';
+                        if (info.last_execution) {
+                            const d = new Date(info.last_execution);
+                            lastExec = d.toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                        }
+                        agentHtml += `
+                            <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px; background:#1f2937; border-radius:8px;">
+                                <div style="display:flex; flex-direction:column;">
+                                    <span style="font-size:0.8rem;">${info.name}</span>
+                                    ${lastExec ? `<span style="font-size:0.65rem; color:#6b7280;">${lastExec}</span>` : ''}
+                                </div>
+                                ${badge}
+                            </div>`;
+                    }
+                }
+                agentDiv.innerHTML = agentHtml || '<span class="gray">无Agent</span>';
+
+                // 汇总
+                document.getElementById('active-agents').textContent = runningCount;
+                document.getElementById('agent-detail').textContent = `运行中: ${runningCount}`;
+                document.getElementById('connected-exchanges').textContent = connectedCount;
+                document.getElementById('exchange-detail').textContent = `已接入: ${connectedCount}`;
+                document.getElementById('system-badge').textContent = connectedCount > 0 ? '运行中' : '未连接';
+                document.getElementById('system-badge').className = connectedCount > 0 ? 'badge badge-green' : 'badge badge-red';
+            } catch (e) {}
+        }
+
+        // 加载余额
+        async function loadBalance() {
+            try {
+                const res = await fetch('/api/balance');
+                const data = await res.json();
+                if (data.error) return;
+
+                let totalBalance = 0;
+                let totalFree = 0;
+                let totalPnl = 0;
+
+                for (const [name, bal] of Object.entries(data)) {
+                    totalBalance += bal.total || 0;
+                    totalFree += bal.free || 0;
+                    totalPnl += bal.unrealized_pnl || 0;
+                }
+
+                document.getElementById('total-balance').textContent = `$${totalBalance.toFixed(2)}`;
+                document.getElementById('balance-detail').textContent = `可用: $${totalFree.toFixed(2)}`;
+
+                const pnlEl = document.getElementById('total-pnl');
+                pnlEl.textContent = `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toFixed(2)}`;
+                pnlEl.className = `stat-value ${totalPnl >= 0 ? 'green' : 'red'}`;
+            } catch (e) {}
+        }
+
+        // 加载持仓
+        async function loadPositions() {
+            try {
+                const res = await fetch('/api/positions');
+                const data = await res.json();
+                const tbody = document.getElementById('positions-body');
+                let html = '';
+                let count = 0;
+
+                for (const [exchange, positions] of Object.entries(data)) {
+                    if (!positions || positions.length === 0) continue;
+                    for (const p of positions) {
+                        count++;
+                        const label = exchange === 'binance' ? '币安' : exchange === 'okx' ? '欧易' : '模拟盘';
+                        const sideText = p.side === 'long' ? '多' : '空';
+                        const sideClass = p.side === 'long' ? 'green' : 'red';
+                        const pnlClass = p.unrealized_pnl >= 0 ? 'green' : 'red';
+                        html += `
+                            <tr>
+                                <td><span class="badge badge-blue">${label}</span></td>
+                                <td><strong>${p.symbol}</strong></td>
+                                <td class="${sideClass}">${sideText}</td>
+                                <td>${p.leverage}x</td>
+                                <td>${p.contracts}</td>
+                                <td>$${p.entry_price.toFixed(2)}</td>
+                                <td>$${p.mark_price.toFixed(2)}</td>
+                                <td class="${pnlClass}">${p.unrealized_pnl >= 0 ? '+' : ''}$${p.unrealized_pnl.toFixed(2)}</td>
+                            </tr>`;
+                    }
+                }
+
+                if (!html) {
+                    html = '<tr><td colspan="8" class="text-center gray">暂无持仓</td></tr>';
+                }
+                tbody.innerHTML = html;
+                document.getElementById('position-count').textContent = count;
+                document.getElementById('pnl-detail').textContent = `持仓: ${count}`;
+            } catch (e) {}
+        }
+
+        // 加载风控
+        async function loadRisk() {
+            try {
+                const res = await fetch('/api/risk');
+                const data = await res.json();
+                const pnlEl = document.getElementById('risk-daily-pnl');
+                const pnl = data.daily_pnl || 0;
+                pnlEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                pnlEl.className = `text-lg font-bold ${pnl >= 0 ? 'green' : 'red'}`;
+                document.getElementById('risk-positions').textContent = data.open_positions || 0;
+            } catch (e) {}
+        }
+
+        // 加载信号
+        async function loadSignals() {
+            try {
+                const res = await fetch('/api/signals');
+                const data = await res.json();
+                const div = document.getElementById('signals-list');
+                if (!data || data.length === 0) {
+                    div.innerHTML = '<span class="gray">暂无活跃信号</span>';
+                    return;
+                }
+                let html = '';
+                for (const sig of data) {
+                    const dirClass = sig.direction === 'long' ? 'green' : sig.direction === 'short' ? 'red' : 'yellow';
+                    html += `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #1f2937;">
+                            <div>
+                                <span class="font-semibold">${sig.symbol || sig.agent}</span>
+                                <span class="${dirClass}" style="margin-left:8px;">${sig.direction || '--'}</span>
+                            </div>
+                            <span class="badge badge-blue">${sig.strength || 0}%</span>
+                        </div>`;
+                }
+                div.innerHTML = html;
+            } catch (e) {}
+        }
+
+        // 执行交易
+        async function executeTrade() {
+            const symbol = document.getElementById('t-symbol').value;
+            const side = document.getElementById('t-side').value;
+            const amount = parseFloat(document.getElementById('t-amount').value);
+            const leverage = parseInt(document.getElementById('t-leverage').value);
+            const exchange = document.getElementById('t-exchange').value;
+            const margin_mode = document.getElementById('t-margin').value;
+            const order_type = document.getElementById('t-type').value;
+            const price = document.getElementById('t-price').value;
+
+            if (!amount || amount <= 0) {
+                showToast('请输入有效数量', 'error');
+                return;
+            }
+
+            const body = { symbol, side, amount, leverage, exchange, margin_mode, order_type };
+            if (order_type === 'limit' && price) body.price = parseFloat(price);
+
+            document.getElementById('trade-result').innerHTML = '<span class="yellow">执行中...</span>';
+
+            try {
+                const res = await fetch('/api/trade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('trade-result').innerHTML =
+                        `<span class="green">下单成功! ${data.exchange} ${data.symbol} ${data.side} @ $${data.price}</span>`;
+                    showToast(`下单成功: ${data.symbol} ${data.side}`);
+                    setTimeout(() => { loadPositions(); loadBalance(); }, 1500);
+                } else {
+                    document.getElementById('trade-result').innerHTML =
+                        `<span class="red">失败: ${data.error}</span>`;
+                    showToast(data.error, 'error');
+                }
+            } catch (e) {
+                document.getElementById('trade-result').innerHTML =
+                    `<span class="red">请求失败: ${e.message}</span>`;
+                showToast(e.message, 'error');
+            }
+        }
+
+        // 紧急全平
+        async function emergencyClose() {
+            if (!confirm('确认紧急全平所有持仓?\n此操作不可撤销!')) return;
+            try {
+                const res = await fetch('/api/emergency-close', { method: 'POST' });
+                const data = await res.json();
+                showToast('紧急全平已执行');
+                setTimeout(() => { loadPositions(); loadBalance(); }, 1500);
+            } catch (e) {
+                showToast('紧急全平失败: ' + e.message, 'error');
+            }
+        }
+
+        // 初始化加载
+        loadTickers();
+        loadStatus();
+        loadBalance();
+        loadPositions();
+        loadRisk();
+        loadSignals();
+        loadAgentActivity();
+        loadOrderHistory();
+
+        // 定时刷新
+        setInterval(loadTickers, 3000);
+        setInterval(loadStatus, 5000);
+        setInterval(loadBalance, 10000);
+        setInterval(loadPositions, 5000);
+        setInterval(loadRisk, 10000);
+        setInterval(loadSignals, 10000);
+        setInterval(loadAgentActivity, 3000);
+        setInterval(loadOrderHistory, 5000);
+
+        // Agent活动日志
+        async function loadAgentActivity() {
+            try {
+                const res = await fetch('/api/agent-activity');
+                const data = await res.json();
+                const div = document.getElementById('activity-log');
+                if (!data || data.length === 0) {
+                    div.innerHTML = '<span class="gray">等待Agent运行...</span>';
+                    return;
+                }
+                document.getElementById('activity-count').textContent = data.length;
+                let html = '';
+                const typeColors = {
+                    'signal': '#3b82f6',
+                    'debate': '#8b5cf6',
+                    'decision': '#f59e0b',
+                    'risk': '#ef4444',
+                    'portfolio': '#10b981',
+                    'order': '#22c55e',
+                    'error': '#ef4444',
+                    'whale': '#06b6d4',
+                    'orderflow': '#6366f1',
+                };
+                for (const item of data) {
+                    const color = typeColors[item.type] || '#6b7280';
+                    html += `
+                        <div style="display:flex; gap:8px; padding:6px 0; border-bottom:1px solid #1f2937; align-items:flex-start;">
+                            <span style="color:#6b7280; min-width:55px; flex-shrink:0;">${item.time}</span>
+                            <span style="color:${color}; min-width:60px; font-weight:500; flex-shrink:0;">${item.agent}</span>
+                            <span style="color:#e2e8f0;">${item.action}: ${item.detail}</span>
+                        </div>`;
+                }
+                div.innerHTML = html;
+            } catch(e) {}
+        }
+
+        // 订单记录
+        async function loadOrderHistory() {
+            try {
+                const res = await fetch('/api/order-history');
+                const data = await res.json();
+                const div = document.getElementById('order-list');
+                if (!data || data.length === 0) {
+                    div.innerHTML = '<span class="gray">暂无订单</span>';
+                    return;
+                }
+                let html = '';
+                let count = 0;
+                for (const item of data) {
+                    if (item.type === 'paper_stats') {
+                        const pnlClass = item.total_pnl >= 0 ? 'green' : 'red';
+                        html += `
+                            <div style="padding:8px; background:#1f2937; border-radius:8px; margin-bottom:8px;">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                                    <span class="badge badge-green">模拟盘</span>
+                                    <span>余额: <strong>$${item.balance.toFixed(2)}</strong></span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#6b7280;">
+                                    <span>盈亏: <span class="${pnlClass}">$${item.total_pnl.toFixed(2)}</span></span>
+                                    <span>胜率: ${(item.win_rate*100).toFixed(1)}%</span>
+                                    <span>交易: ${item.total_trades}</span>
+                                </div>
+                            </div>`;
+                        continue;
+                    }
+                    count++;
+                    const sideClass = item.side === 'buy' ? 'green' : 'red';
+                    const sideText = item.side === 'buy' ? '多' : '空';
+                    html += `
+                        <div style="display:flex; gap:8px; padding:6px 0; border-bottom:1px solid #1f2937; align-items:center;">
+                            <span style="color:#6b7280; min-width:55px;">${item.time}</span>
+                            <span style="font-weight:500; min-width:80px;">${item.symbol}</span>
+                            <span class="${sideClass}" style="min-width:20px;">${sideText}</span>
+                            <span style="color:#94a3b8;">${item.quantity}</span>
+                            <span style="color:#94a3b8;">@ $${item.price.toFixed(2)}</span>
+                        </div>`;
+                }
+                document.getElementById('order-count').textContent = count;
+                div.innerHTML = html || '<span class="gray">暂无成交</span>';
+            } catch(e) {}
+        }
+
+        // 模式切换
+        let currentMode = 'paper';
+
+        async function loadMode() {
+            try {
+                const res = await fetch('/api/mode');
+                const data = await res.json();
+                currentMode = data.mode;
+                updateModeUI();
+            } catch(e) {}
+        }
+
+        function updateModeUI() {
+            const label = document.getElementById('mode-label');
+            const knob = document.getElementById('mode-knob');
+            const toggle = document.getElementById('mode-toggle').querySelector('div');
+
+            if (currentMode === 'live') {
+                label.textContent = 'LIVE';
+                label.className = 'badge badge-red';
+                knob.style.left = '22px';
+                toggle.style.background = '#ef4444';
+            } else {
+                label.textContent = 'PAPER';
+                label.className = 'badge badge-green';
+                knob.style.left = '2px';
+                toggle.style.background = '#374151';
+            }
+        }
+
+        async function toggleMode() {
+            const newMode = currentMode === 'paper' ? 'live' : 'paper';
+
+            if (newMode === 'live') {
+                if (!confirm('⚠️ 确认切换到实盘模式？\n\n这将使用真实资金进行交易！')) {
+                    return;
+                }
+            } else {
+                if (!confirm('切换到模拟盘模式？')) {
+                    return;
+                }
+            }
+
+            try {
+                const res = await fetch('/api/mode', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({mode: newMode}),
+                });
+                const data = await res.json();
+                currentMode = data.mode;
+                updateModeUI();
+                showToast(data.message || '模式已切换', 'success');
+            } catch(e) {
+                showToast('切换失败: ' + e.message, 'error');
+            }
+        }
+
+        loadMode();
+    </script>
+</body>
+</html>

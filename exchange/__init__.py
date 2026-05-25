@@ -11,6 +11,28 @@ def __getattr__(name):
     elif name == "PaperTradeEngine":
         from .paper_trade import PaperTradeEngine
         return PaperTradeEngine
+    elif name == "BaseExchange":
+        from .base_exchange import BaseExchange
+        return BaseExchange
+    elif name == "BinanceExchange":
+        from .binance_exchange import BinanceExchange
+        return BinanceExchange
+    elif name == "OKXExchange":
+        from .okx_exchange import OKXExchange
+        return OKXExchange
+    elif name == "ExchangeRouter":
+        from .exchange_router import ExchangeRouter
+        return ExchangeRouter
+    elif name == "CredentialManager":
+        from .credentials import CredentialManager
+        return CredentialManager
+    elif name == "QRAuthManager":
+        from .qr_auth import QRAuthManager
+        return QRAuthManager
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-__all__ = ["BinanceClient", "binance_client", "PaperTradeEngine"]
+__all__ = [
+    "BinanceClient", "binance_client", "PaperTradeEngine",
+    "BaseExchange", "BinanceExchange", "OKXExchange",
+    "ExchangeRouter", "CredentialManager", "QRAuthManager",
+]

@@ -1,5 +1,5 @@
 """
-Agents模块 - 13个交易Agent
+Agents模块 - 13+1个交易Agent
 """
 
 from .data.news_agent import NewsAgent
@@ -7,6 +7,7 @@ from .data.whale_agent import WhaleAgent
 from .data.correlation_agent import CorrelationAgent
 from .data.orderflow_agent import OrderFlowAgent
 from .data.regime_agent import RegimeAgent
+from .data.arbitrage_agent import ArbitrageAgent
 
 from .analysis.signal_agent import SignalAgent
 from .analysis.debate_agent import DebateAgent
@@ -22,10 +23,11 @@ from .position.review_agent import ReviewAgent
 __all__ = [
     # 数据采集层
     "NewsAgent",
-    "WhaleAgent", 
+    "WhaleAgent",
     "CorrelationAgent",
     "OrderFlowAgent",
     "RegimeAgent",
+    "ArbitrageAgent",
     # 分析决策层
     "SignalAgent",
     "DebateAgent",

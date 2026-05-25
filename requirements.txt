@@ -1,9 +1,8 @@
-# Delta Quant - 13 Agent量化交易系统依赖
+# Delta Quant v9.0 - 双平台量化交易系统依赖
 
 # 异步框架
 aiofiles>=23.0.0
 aiohttp>=3.9.0
-aiofiles>=23.0.0
 
 # 交易所API
 ccxt>=4.0.0
@@ -15,10 +14,7 @@ httpx>=0.26.0
 numpy>=1.24.0
 pandas>=2.0.0
 
-# 技术分析 (可选，如安装失败可使用pandas-ta替代)
-# TA-Lib
-# pip install ta-lib
-# 或使用pandas-ta (纯Python实现)
+# 技术分析
 pandas-ta>=0.3.14
 
 # 数据验证
@@ -33,9 +29,12 @@ aiosqlite>=0.19.0
 # YAML配置
 pyyaml>=6.0
 
-# WebSocket支持 (可选)
-# websockets>=12.0
-
-# 开发工具
-# pytest>=7.0.0
-# pytest-asyncio>=0.21.0
+# v9.0 新增依赖
+qrcode>=7.4              # QR Code生成
+Pillow>=10.0             # QR Code图片处理
+cryptography>=41.0       # API Key加密存储
+fastapi>=0.104           # Web管理界面
+uvicorn>=0.24            # ASGI服务器
+python-multipart>=0.0.6  # 文件上传（表单）
+websockets>=12.0         # WebSocket支持
+jinja2>=3.1              # HTML模板

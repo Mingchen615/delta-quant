@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实盘 - Delta Quant</title>
+    <link rel="stylesheet" href="/static/common.css">
+</head>
+<body>
+    <nav class="nav">
+        <div class="nav-brand">Delta Quant <span class="blue" style="font-size:0.75rem;font-weight:400">v9.0</span></div>
+        <div class="nav-links">
+            <a href="/paper" class="nav-link">模拟盘</a>
+            <a href="/live" class="nav-link active">实盘</a>
+            <a href="/connect" class="nav-link">接入交易所</a>
+        </div>
+        <div class="nav-right">
+            <span id="mode-badge" class="badge badge-red">LIVE</span>
+            <span id="clock" class="muted" style="font-size:0.8rem"></span>
+            <button onclick="logout()" class="btn btn-ghost" style="font-size:0.75rem">退出</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- 行情条 -->
+        <div class="card mb-16" style="padding:12px 20px">
+            <div class="ticker-row" id="ticker-bar"><span class="gray">加载行情...</span></div>
+        </div>
+
+        <!-- 核心指标 -->
+        <div class="grid-4 mb-16">
+            <div class="card">
+                <div class="stat-label">总资产</div>
+                <div class="stat-value" id="total-balance">--</div>
+                <div class="stat-label" id="balance-detail">可用: --</div>
+            </div>
+            <div class="card">
+                <div class="stat-label">未实现盈亏</div>
+                <div class="stat-value" id="total-pnl">--</div>
+                <div class="stat-label" id="pnl-detail">持仓: 0</div>
+            </div>
+            <div class="card">
+                <div class="stat-label">日盈亏</div>
+                <div class="stat-value" id="risk-daily-pnl">--</div>
+                <div class="stat-label">日限额: 5%</div>
+            </div>
+            <div class="card">
+                <div class="stat-label">持仓数</div>
+                <div class="stat-value" id="position-count-val">--</div>
+                <div class="stat-label">上限: 4</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <!-- 左列 -->
+            <div>
+                <!-- 交易所状态 -->
+                <div class="card mb-16">
+                    <div class="card-header">交易所连接</div>
+                    <div id="exchange-list" class="gray">加载中...</div>
+                </div>
+
+                <!-- 实盘持仓 -->
+                <div class="card mb-16">
+                    <div class="card-header">
+                        实盘持仓
+                        <span id="live-position-count" class="badge badge-blue" style="margin-left:auto">0</span>
+                    </div>
+                    <div style="overflow-x:auto">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>平台</th><th>币对</th><th>方向</th><th>杠杆</th>
+                                    <th>数量</th><th>入场价</th><th>标记价</th><th>盈亏</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positions-body">
+                                <tr><td colspan="8" class="text-center gray">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Agent监控 -->
+                <div class="card">
+                    <div class="card-header">Agent监控</div>
+                    <div id="agent-grid" class="grid-3">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 右列 -->
+            <div>
+                <!-- 快速交易 -->
+                <div class="card mb-16">
+                    <div class="card-header">快速交易 (实盘)</div>
+                    <div class="grid-2 mb-16">
+                        <div>
+                            <label class="gray" style="font-size:0.75rem">币对</label>
+                            <select id="t-symbol" class="input">
+                                <option>BTC/USDT</option><option>ETH/USDT</option>
+                                <option>SOL/USDT</option><option>XRP/USDT</option>
+                                <option>DOGE/USDT</option><option>ADA/USDT</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="gray" style="font-size:0.75rem">方向</label>
+                            <select id="t-side" class="input">
+                                <option value="buy">做多</option><option value="sell">做空</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid-3 mb-16">
+                        <div>
+                            <label class="gray" style="font-size:0.75rem">数量</label>
+                            <input type="number" id="t-amount" class="input" step="0.001" placeholder="0.001">
+                        </div>
+                        <div>
+                            <label class="gray" style="font-size:0.75rem">杠杆</label>
+                            <select id="t-leverage" class="input">
+                                <option>5</option><option>10</option><option selected>20</option><option>30</option><option>50</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="gray" style="font-size:0.75rem">平台</label>
+                            <select id="t-exchange" class="input">
+                                <option value="auto">自动</option>
+                                <option value="binance">币安</option>
+                                <option value="okx">欧易</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid-2 mb-16">
+                        <div>
+                            <label class="gray" style="font-size:0.75rem">保证金</label>
+                            <select id="t-margin" class="input">
+                                <option value="cross">全仓</option><option value="isolated">逐仓</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="gray" style="font-size:0.75rem">订单类型</label>
+                            <select id="t-type" class="input">
+                                <option value="market">市价</option><option value="limit">限价</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button onclick="executeTrade()" class="btn btn-red btn-full btn-lg">执行实盘交易</button>
+                    <div id="trade-result" style="margin-top:8px;font-size:0.8rem"></div>
+                </div>
+
+                <!-- 风控状态 -->
+                <div class="card mb-16">
+                    <div class="card-header">风控状态</div>
+                    <div class="grid-2 mb-16">
+                        <div>
+                            <div class="gray" style="font-size:0.75rem">最大回撤</div>
+                            <div id="risk-drawdown" class="stat-value">--</div>
+                        </div>
+                        <div>
+                            <div class="gray" style="font-size:0.75rem">总敞口</div>
+                            <div id="risk-exposure" class="stat-value">--</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+                        <button onclick="emergencyClose()" class="btn btn-red btn-full">紧急全平所有持仓</button>
+                    </div>
+                </div>
+
+                <!-- 最新信号 -->
+                <div class="card mb-16">
+                    <div class="card-header">最新信号</div>
+                    <div id="signals-list" class="gray">暂无信号</div>
+                </div>
+
+                <!-- 订单记录 -->
+                <div class="card">
+                    <div class="card-header">
+                        实盘订单
+                        <span id="order-count" class="badge badge-blue" style="margin-left:auto">0</span>
+                    </div>
+                    <div id="order-list" class="scroll-y" style="max-height:250px;overflow-y:auto;font-size:0.8rem">
+                        <span class="gray">暂无订单</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        if (!localStorage.getItem('dq_token')) window.location.href = '/login';
+
+        function authHeaders() { return { 'Authorization': 'Bearer ' + localStorage.getItem('dq_token') }; }
+        function logout() { localStorage.removeItem('dq_token'); window.location.href = '/login'; }
+
+        function updateClock() { document.getElementById('clock').textContent = new Date().toLocaleTimeString('zh-CN'); }
+        setInterval(updateClock, 1000); updateClock();
+
+        function showToast(msg, type='success') {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+            const div = document.createElement('div');
+            div.className = `toast toast-${type}`; div.textContent = msg;
+            document.body.appendChild(div); setTimeout(() => div.remove(), 3000);
+        }
+
+        async function apiFetch(url, opts={}) {
+            opts.headers = { ...opts.headers, ...authHeaders() };
+            const res = await fetch(url, opts);
+            if (res.status === 401) { logout(); return null; }
+            return res;
+        }
+
+        // 行情
+        async function loadTickers() {
+            try {
+                const res = await apiFetch('/api/tickers');
+                const data = await res.json();
+                const bar = document.getElementById('ticker-bar');
+                const icons = {'BTC/USDT':'₿','ETH/USDT':'Ξ','SOL/USDT':'◎','XRP/USDT':'✕','DOGE/USDT':'Ð','ADA/USDT':'₳','AVAX/USDT':'▲','BNB/USDT':'◆'};
+                let html = '';
+                for (const [sym, info] of Object.entries(data)) {
+                    html += `<div class="ticker-item"><span style="font-size:1.2rem">${icons[sym]||'●'}</span><div><div class="ticker-symbol">${sym.replace('/USDT','')}</div><div class="ticker-price">$${info.price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div></div>`;
+                }
+                bar.innerHTML = html || '<span class="gray">暂无行情</span>';
+            } catch(e) {}
+        }
+
+        // 余额
+        async function loadBalance() {
+            try {
+                const res = await apiFetch('/api/balance');
+                const data = await res.json();
+                if (data.error) return;
+                let total=0, free=0, pnl=0;
+                for (const bal of Object.values(data)) { total+=bal.total||0; free+=bal.free||0; pnl+=bal.unrealized_pnl||0; }
+                document.getElementById('total-balance').textContent = `$${total.toFixed(2)}`;
+                document.getElementById('balance-detail').textContent = `可用: $${free.toFixed(2)}`;
+                const pnlEl = document.getElementById('total-pnl');
+                pnlEl.textContent = `${pnl>=0?'+':''}$${pnl.toFixed(2)}`;
+                pnlEl.className = `stat-value ${pnl>=0?'green':'red'}`;
+            } catch(e) {}
+        }
+
+        // 交易所状态
+        async function loadStatus() {
+            try {
+                const res = await apiFetch('/api/status');
+                const data = await res.json();
+                // 交易所
+                const exDiv = document.getElementById('exchange-list');
+                let exHtml = '';
+                if (data.exchanges) {
+                    for (const [name, info] of Object.entries(data.exchanges)) {
+                        const icon = name==='binance'?'🟡':'🔵';
+                        const label = name==='binance'?'币安 Binance':'欧易 OKX';
+                        const badge = info.connected ? '<span class="badge badge-green">已连接</span>' : '<span class="badge badge-red">未连接</span>';
+                        exHtml += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:1.5rem">${icon}</span><span>${label}</span></div>${badge}</div>`;
+                    }
+                }
+                exDiv.innerHTML = exHtml || '<span class="gray">无交易所</span>';
+                // Agent
+                const agentDiv = document.getElementById('agent-grid');
+                let agentHtml = '';
+                if (data.agents) {
+                    for (const [name, info] of Object.entries(data.agents)) {
+                        const badge = info.state==='running'?'<span class="badge badge-green">运行</span>':info.state==='failed'?'<span class="badge badge-red">异常</span>':'<span class="badge badge-yellow">等待</span>';
+                        agentHtml += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:var(--bg-input);border-radius:8px"><span style="font-size:0.8rem">${info.name}</span>${badge}</div>`;
+                    }
+                }
+                agentDiv.innerHTML = agentHtml || '<span class="gray">无Agent</span>';
+            } catch(e) {}
+        }
+
+        // 实盘持仓
+        async function loadPositions() {
+            try {
+                const res = await apiFetch('/api/positions?mode=live');
+                const data = await res.json();
+                const tbody = document.getElementById('positions-body');
+                let html = '', count = 0;
+                for (const [exchange, positions] of Object.entries(data)) {
+                    if (!positions || positions.length === 0) continue;
+                    for (const p of positions) {
+                        count++;
+                        const label = exchange==='binance'?'币安':exchange==='okx'?'欧易':exchange;
+                        const sideClass = p.side==='long'?'green':'red';
+                        const pnlClass = p.unrealized_pnl>=0?'green':'red';
+                        html += `<tr><td><span class="badge badge-blue">${label}</span></td><td><strong>${p.symbol}</strong></td><td class="${sideClass}">${p.side==='long'?'多':'空'}</td><td>${p.leverage}x</td><td>${p.contracts}</td><td>$${p.entry_price.toFixed(2)}</td><td>$${p.mark_price.toFixed(2)}</td><td class="${pnlClass}">${p.unrealized_pnl>=0?'+':''}$${p.unrealized_pnl.toFixed(2)}</td></tr>`;
+                    }
+                }
+                if (!html) html = '<tr><td colspan="8" class="text-center gray">暂无持仓</td></tr>';
+                tbody.innerHTML = html;
+                document.getElementById('live-position-count').textContent = count;
+                document.getElementById('position-count-val').textContent = count;
+                document.getElementById('pnl-detail').textContent = `持仓: ${count}`;
+            } catch(e) {}
+        }
+
+        // 风控
+        async function loadRisk() {
+            try {
+                const res = await apiFetch('/api/risk');
+                const data = await res.json();
+                const pnlEl = document.getElementById('risk-daily-pnl');
+                const pnl = data.daily_pnl || 0;
+                pnlEl.textContent = `${pnl>=0?'+':''}$${pnl.toFixed(2)}`;
+                pnlEl.className = `stat-value ${pnl>=0?'green':'red'}`;
+                document.getElementById('risk-drawdown').textContent = `${((data.max_drawdown||0)*100).toFixed(1)}%`;
+                document.getElementById('risk-exposure').textContent = `${data.open_positions||0} 仓位`;
+            } catch(e) {}
+        }
+
+        // 信号
+        async function loadSignals() {
+            try {
+                const res = await apiFetch('/api/signals');
+                const data = await res.json();
+                const div = document.getElementById('signals-list');
+                if (!data||data.length===0) { div.innerHTML='<span class="gray">暂无活跃信号</span>'; return; }
+                let html='';
+                for (const sig of data) {
+                    const dirClass = sig.direction==='long'?'green':sig.direction==='short'?'red':'yellow';
+                    html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><div><span style="font-weight:600">${sig.symbol||sig.agent}</span><span class="${dirClass}" style="margin-left:8px">${sig.direction||'--'}</span></div><span class="badge badge-blue">${sig.strength||0}%</span></div>`;
+                }
+                div.innerHTML=html;
+            } catch(e) {}
+        }
+
+        // 订单
+        async function loadOrderHistory() {
+            try {
+                const res = await apiFetch('/api/order-history');
+                const data = await res.json();
+                const div = document.getElementById('order-list');
+                if (!data||data.length===0) { div.innerHTML='<span class="gray">暂无订单</span>'; return; }
+                let html='', count=0;
+                for (const item of data) {
+                    if (item.type==='paper_stats') continue;
+                    count++;
+                    const sideClass = item.side==='buy'?'green':'red';
+                    html+=`<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);align-items:center"><span style="color:var(--text-gray);min-width:55px">${item.time}</span><span style="font-weight:500;min-width:80px">${item.symbol}</span><span class="${sideClass}" style="min-width:20px">${item.side==='buy'?'多':'空'}</span><span class="muted">${item.quantity}</span><span class="muted">@ $${item.price.toFixed(2)}</span></div>`;
+                }
+                document.getElementById('order-count').textContent = count;
+                div.innerHTML = html || '<span class="gray">暂无成交</span>';
+            } catch(e) {}
+        }
+
+        // 交易
+        async function executeTrade() {
+            const body = {
+                symbol: document.getElementById('t-symbol').value,
+                side: document.getElementById('t-side').value,
+                amount: parseFloat(document.getElementById('t-amount').value),
+                leverage: parseInt(document.getElementById('t-leverage').value),
+                exchange: document.getElementById('t-exchange').value,
+                margin_mode: document.getElementById('t-margin').value,
+                order_type: document.getElementById('t-type').value,
+            };
+            if (!body.amount||body.amount<=0) { showToast('请输入有效数量','error'); return; }
+            document.getElementById('trade-result').innerHTML = '<span class="yellow">执行中...</span>';
+            try {
+                const res = await apiFetch('/api/trade', {method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify(body)});
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('trade-result').innerHTML = `<span class="green">下单成功! ${data.exchange} ${data.symbol} @ $${data.price}</span>`;
+                    showToast('下单成功');
+                    setTimeout(()=>{loadPositions();loadBalance();},1500);
+                } else {
+                    document.getElementById('trade-result').innerHTML = `<span class="red">失败: ${data.error}</span>`;
+                }
+            } catch(e) {
+                document.getElementById('trade-result').innerHTML = `<span class="red">请求失败: ${e.message}</span>`;
+            }
+        }
+
+        // 紧急全平
+        async function emergencyClose() {
+            if (!confirm('确认紧急全平所有持仓?\n此操作不可撤销!')) return;
+            try {
+                const res = await apiFetch('/api/emergency-close', {method:'POST'});
+                const data = await res.json();
+                showToast('紧急全平已执行');
+                setTimeout(()=>{loadPositions();loadBalance();},1500);
+            } catch(e) { showToast('紧急全平失败','error'); }
+        }
+
+        // 初始化
+        loadTickers(); loadBalance(); loadStatus(); loadPositions(); loadRisk(); loadSignals(); loadOrderHistory();
+        setInterval(loadTickers,3000); setInterval(loadBalance,10000); setInterval(loadStatus,5000);
+        setInterval(loadPositions,5000); setInterval(loadRisk,10000); setInterval(loadSignals,10000);
+        setInterval(loadOrderHistory,5000);
+    </script>
+</body>
+</html>

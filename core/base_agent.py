@@ -265,11 +265,32 @@ class BaseAgent(ABC):
         )
         
     async def subscribe(self, topic: str, callback: Callable):
-        """订阅主题"""
+        """订阅主题，并启动消息消费"""
         sub_id = await self.bus.subscribe(topic, callback, subscriber_id=self.name)
         self._subscriptions.append(sub_id)
         self.logger.debug(f"订阅主题: {topic}")
+        # 启动该订阅的消息消费任务
+        asyncio.create_task(self._consume_loop(topic, sub_id, callback))
         
+    async def _consume_loop(self, topic: str, subscriber_id: str, callback: Callable):
+        """消费消息队列，调用回调"""
+        queue = await self.bus.get_queue(topic, subscriber_id)
+        if not queue:
+            self.logger.warning(f"消费循环启动失败: 队列不存在 [{topic}:{subscriber_id}]")
+            return
+        self.logger.debug(f"消费循环已启动: [{topic}] subscriber={subscriber_id}")
+        while self._running:
+            try:
+                data = await asyncio.wait_for(queue.get(), timeout=1.0)
+                self.logger.debug(f"收到消息 [{topic}], 调用回调")
+                await callback(data)
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"消息处理出错 [{topic}]: {e}")
+
     async def publish(self, topic: str, data: Any):
         """发布消息"""
         await self.bus.publish(topic, data)

@@ -1,9 +1,10 @@
 """
-6. 信号趋势 Agent (核心)
-扫描Top40币种，9因子加权评分
+6. 信号趋势 Agent (核心) - v3重写
+15m定方向 → 5m找入场 → 1m确认
 """
 
 import asyncio
+import pandas as pd
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -12,29 +13,23 @@ from loguru import logger
 from core.base_agent import BaseAgent, AgentConfig
 from core.event_types import SignalEvent
 from exchange.binance_client import binance_client
-from data.indicators import IndicatorCalculator
+from data.indicators import full_analysis
 from data.market_data import market_data_manager
 from config import (
     SCAN_TOP_N, SIGNAL_THRESHOLD_MAIN, SIGNAL_THRESHOLD_ALT,
-    FACTOR_WEIGHTS, MTF_TIMEFRAMES, MTF_WEIGHTS
+    MAX_POSITIONS, TRADING_V3,
 )
 
 
 class SignalAgent(BaseAgent):
     """
-    信号趋势Agent (核心)
-    每5分钟扫描Top40币种，9因子加权评分:
-    1. 趋势 (EMA 20/50/200交叉)
-    2. 动量 (RSI 14 + MACD)
-    3. 波动率 (布林带宽度 + ATR)
-    4. 成交量 (CVD累积成交量差)
-    5. 持仓量变化 (OI变化率)
-    6. 资金费率 (Funding Rate方向)
-    7. 清算信号 (大额清算方向)
-    8. 多时间框架一致性 (15m/1h/4h信号同向)
-    9. 新闻情绪 (从NewsAgent获取)
+    信号趋势Agent (v3核心重写)
+    分层评分+方向锁定:
+    1. 15m趋势方向（从RegimeEvent获取）
+    2. 5m信号评分（只在趋势方向上计分）
+    3. 1m确认（近3根K线需2根同方向）
     """
-    
+
     def __init__(self, config: Optional[AgentConfig] = None, **kwargs):
         default_config = AgentConfig(
             name="信号趋势",
@@ -43,287 +38,411 @@ class SignalAgent(BaseAgent):
             enabled=True,
         )
         super().__init__(config or default_config, **kwargs)
-        
+
         self._signals: Dict[str, SignalEvent] = {}
         self._sentiment_score: float = 0
-        
+        self._exchange_router = None
+        self._position_count: int = 0
+        self._paused: bool = False
+        self._current_trend: str = "NEUTRAL"  # 从RegimeAgent获取
+        self._current_regime = None
+
+    def set_router(self, router):
+        """设置交易所路由器"""
+        self._exchange_router = router
+
     async def _setup_subscriptions(self):
         """设置订阅"""
         await self.subscribe("sentiment", self._on_sentiment)
-        
+        await self.subscribe("position.opened", self._on_position_opened)
+        await self.subscribe("position.closed", self._on_position_closed)
+        await self.subscribe("regime", self._on_regime)
+
     async def _on_sentiment(self, event):
         """接收情绪事件"""
         self._sentiment_score = event.score
         self.logger.debug(f"接收情绪分数: {event.score:.2f}")
-        
+
+    async def _on_position_opened(self, event):
+        """持仓开仓 - 更新计数"""
+        self._position_count += 1
+        self._check_position_slots()
+
+    async def _on_position_closed(self, event):
+        """持仓平仓 - 更新计数并恢复扫描"""
+        self._position_count = max(0, self._position_count - 1)
+        if self._paused and self._position_count < MAX_POSITIONS:
+            self._paused = False
+            self.logger.info(f"仓位空出({self._position_count}/{MAX_POSITIONS})，恢复信号扫描")
+
+    async def _on_regime(self, event):
+        """接收市场状态事件，获取15m趋势方向"""
+        self._current_trend = event.trend_direction
+        self._current_regime = event
+        self.logger.debug(f"接收趋势方向: {self._current_trend}")
+
+    def _check_position_slots(self):
+        """检查仓位是否已满"""
+        if self._position_count >= MAX_POSITIONS:
+            if not self._paused:
+                self._paused = True
+                self.logger.info(f"仓位已满({self._position_count}/{MAX_POSITIONS})，暂停信号扫描")
+
     async def execute(self):
         """执行信号扫描"""
-        self.logger.info("开始信号扫描...")
-        
+        if self._paused:
+            self.logger.debug(f"仓位已满({self._position_count}/{MAX_POSITIONS})，跳过扫描")
+            return
+
+        # v3: 第1关 - 15m趋势方向
+        if self._current_trend == "NEUTRAL":
+            self.logger.info("15m趋势不明(NEUTRAL)，跳过本轮扫描")
+            return
+
+        self.logger.info(f"开始信号扫描 (趋势方向: {self._current_trend})...")
+
         try:
-            # 获取Top币种
             symbols = await self._get_top_symbols()
-            
             self.logger.info(f"扫描 {len(symbols)} 个币种...")
-            
+
             for symbol in symbols:
                 try:
                     signal = await self._analyze_symbol(symbol)
-                    
+
                     if signal and signal.score > 0:
                         self._signals[symbol] = signal
-                        
-                        # 发布信号
                         await self.publish("signal", signal)
-                        
-                        # 打印高分信号
+
                         threshold = (
-                            SIGNAL_THRESHOLD_MAIN if signal.is_mainstream 
+                            SIGNAL_THRESHOLD_MAIN if signal.is_mainstream
                             else SIGNAL_THRESHOLD_ALT
                         )
                         if signal.score >= threshold:
                             self.logger.info(
                                 f"📊 {symbol} {signal.direction.upper()} "
                                 f"信号分数: {signal.score:.1f} "
+                                f"趋势: {signal.trend} "
+                                f"ATR: {signal.atr:.4f} "
                                 f"(阈值: {threshold})"
                             )
-                            
+
                 except Exception as e:
                     self.logger.error(f"分析{symbol}出错: {e}")
                     continue
-                    
+
             self.logger.info(f"信号扫描完成，有效信号: {len(self._signals)}")
-            
+
         except Exception as e:
             self.logger.error(f"信号扫描出错: {e}")
-            
+
+    async def _fetch_klines(self, symbol: str, timeframe: str, limit: int) -> list:
+        """从路由器或binance_client获取K线数据"""
+        if self._exchange_router:
+            for name, ex in self._exchange_router.exchanges.items():
+                if not ex.is_connected:
+                    continue
+                try:
+                    klines = await ex.get_klines(symbol, timeframe, limit)
+                    return [
+                        [int(k.timestamp.timestamp() * 1000), k.open, k.high, k.low, k.close, k.volume]
+                        for k in klines
+                    ]
+                except Exception as e:
+                    self.logger.warning(f"{name} get_klines失败 {symbol}: {e}")
+                    continue
+            raise RuntimeError(f"所有交易所获取 {symbol} K线失败")
+        return await binance_client.fetch_klines(symbol, timeframe, limit)
+
     async def _get_top_symbols(self) -> List[str]:
         """获取Top币种"""
+        if self._exchange_router:
+            for name, ex in self._exchange_router.exchanges.items():
+                if ex.is_connected:
+                    try:
+                        symbols = [s for s in ex.supported_symbols if ":USDT" in s]
+                        return symbols[:SCAN_TOP_N]
+                    except Exception:
+                        continue
+            return ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+
         try:
             markets = await binance_client.fetch_markets()
             symbols = [
                 m["symbol"] for m in markets
                 if m["quote"] == "USDT" and m["type"] == "future"
             ]
-            
-            # 按成交量排序，取Top N
             tickers = await binance_client.fetch_tickers(symbols[:100])
-            
             sorted_symbols = sorted(
                 symbols,
                 key=lambda s: tickers.get(s, {}).get("quoteVolume", 0),
                 reverse=True
             )
-            
             return sorted_symbols[:SCAN_TOP_N]
-            
         except Exception as e:
             self.logger.error(f"获取Top币种失败: {e}")
             return ["BTC/USDT", "ETH/USDT"]
-            
+
     async def _analyze_symbol(self, symbol: str) -> Optional[SignalEvent]:
-        """分析单个币种"""
-        # 获取多时间框架K线
-        mtf_klines = {}
-        for tf in MTF_TIMEFRAMES:
-            klines = await binance_client.fetch_klines(symbol, tf, 100)
-            mtf_klines[tf] = klines
-            
-        if not mtf_klines.get("1h"):
+        """v3: 分层分析单个币种"""
+        # 获取3个时间框架K线
+        klines_15m = await self._fetch_klines(symbol, "15m", 100)
+        klines_5m = await self._fetch_klines(symbol, "5m", 100)
+        klines_1m = await self._fetch_klines(symbol, "1m", 30)
+
+        if not klines_5m or len(klines_5m) < 50:
             return None
-            
-        # 计算各因子
-        factor_scores = await self._calculate_factors(symbol, mtf_klines)
-        
-        # 加权总分
-        total_score = sum(
-            factor_scores.get(f, 0) * FACTOR_WEIGHTS.get(f, 0)
-            for f in FACTOR_WEIGHTS.keys()
-        ) / sum(FACTOR_WEIGHTS.values())
-        
-        # 多时间框架确认
-        mtf_signals = await self._get_mtf_signals(mtf_klines)
-        mtf_score = self._calculate_mtf_score(mtf_signals)
-        
-        total_score = total_score * 0.9 + mtf_score * 0.1
-        
-        # 判断方向
-        direction = self._determine_direction(factor_scores)
-        
-        # 判断是否主流币
-        is_mainstream = symbol in ["BTC/USDT", "ETH/USDT", "BNB/USDT"]
-        
+
+        # 构建DataFrame并计算指标
+        df_5m = pd.DataFrame(klines_5m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df_5m = full_analysis(df_5m)
+
+        df_1m = pd.DataFrame(klines_1m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df_1m = full_analysis(df_1m)
+
+        df_15m = None
+        if klines_15m and len(klines_15m) >= 50:
+            df_15m = pd.DataFrame(klines_15m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df_15m = full_analysis(df_15m)
+
+        # === 第1关：15m趋势方向（从RegimeAgent获取）===
+        trend = self._current_trend
+        if trend == "NEUTRAL":
+            return None  # 不开仓
+
+        # === 第2关：5m ADX过滤 ===
+        last_5m = df_5m.iloc[-1]
+        adx = last_5m.get('adx', 0)
+        if pd.isna(adx):
+            adx = 0
+        min_adx = TRADING_V3.get('min_adx', 20)
+        if adx < min_adx:
+            self.logger.debug(f"{symbol} ADX={adx:.1f} < {min_adx}，趋势太弱")
+            return None
+
+        # ATR值
+        atr = last_5m.get('atr', 0)
+        if pd.isna(atr) or atr <= 0:
+            atr = (last_5m['high'] - last_5m['low']) * 0.5
+
+        # 成交量比率
+        vol_ratio = last_5m.get('vol_ratio', 0)
+        if pd.isna(vol_ratio):
+            vol_ratio = 0
+
+        # === 第3关：5m信号评分（只在趋势方向上计分）===
+        prev_5m = df_5m.iloc[-2]
+        last_1m = df_1m.iloc[-1]
+
+        if trend == "UP":
+            score, reasons = self._score_long(
+                last_5m, prev_5m, last_1m, df_1m, vol_ratio, df_15m, adx
+            )
+        else:  # DOWN
+            score, reasons = self._score_short(
+                last_5m, prev_5m, last_1m, df_1m, vol_ratio, df_15m, adx
+            )
+
+        # 缩量扣分
+        min_vol = TRADING_V3.get('min_vol_ratio', 1.0)
+        if vol_ratio < min_vol and f'缩量' not in ' '.join(reasons):
+            score -= 10
+            reasons.append(f'5m缩量({vol_ratio:.1f}x)')
+
+        score = max(0, min(score, 100))
+
+        action = "HOLD"
+        min_strength = TRADING_V3.get('min_signal_strength', 70)
+        if score >= min_strength:
+            action = "LONG" if trend == "UP" else "SHORT"
+
+        is_mainstream = symbol in ["BTC/USDT", "ETH/USDT", "BNB/USDT", "BTC/USDT:USDT", "ETH/USDT:USDT", "BNB/USDT:USDT"]
+
+        adx_15m = 0
+        if df_15m is not None and len(df_15m) > 0:
+            adx_15m = df_15m.iloc[-1].get('adx', 0)
+            if pd.isna(adx_15m):
+                adx_15m = 0
+
         return SignalEvent(
             symbol=symbol,
-            direction=direction,
-            score=min(total_score * 100, 100),  # 归一化到0-100
-            confidence=mtf_score * 100,
-            factor_scores=factor_scores,
-            factor_weights=FACTOR_WEIGHTS.copy(),
-            trend_score=factor_scores.get("trend", 0) * 100,
-            momentum_score=factor_scores.get("momentum", 0) * 100,
-            volatility_score=factor_scores.get("volatility", 0) * 100,
-            volume_score=factor_scores.get("volume", 0) * 100,
-            oi_score=factor_scores.get("open_interest", 0) * 100,
-            funding_rate_score=factor_scores.get("funding_rate", 0) * 100,
-            liquidation_score=factor_scores.get("liquidation", 0) * 100,
-            mtf_score=mtf_score * 100,
-            sentiment_score=(self._sentiment_score + 1) * 50,  # 归一化
-            mtf_signals=mtf_signals,
+            direction="long" if action == "LONG" else ("short" if action == "SHORT" else "neutral"),
+            score=score,
+            confidence=score,
+            factor_scores={},
+            factor_weights={},
+            trend_score=25 if trend == "UP" else (-25 if trend == "DOWN" else 0),
+            momentum_score=0,
+            volatility_score=0,
+            volume_score=vol_ratio * 20,
+            oi_score=0,
+            funding_rate_score=0,
+            liquidation_score=0,
+            mtf_score=0,
+            sentiment_score=(self._sentiment_score + 1) * 50,
+            mtf_signals={},
             is_mainstream=is_mainstream,
             timestamp=datetime.now(),
+            # v3新增
+            trend=trend,
+            atr=float(atr),
+            adx=float(adx_15m),
+            vol_ratio=float(vol_ratio),
         )
-        
-    async def _calculate_factors(
-        self,
-        symbol: str,
-        mtf_klines: Dict[str, List]
-    ) -> Dict[str, float]:
-        """计算9个因子"""
-        klines = mtf_klines.get("1h", [])
-        
-        if len(klines) < 50:
-            return {}
-            
-        highs = [k[2] for k in klines]
-        lows = [k[3] for k in klines]
-        closes = [k[4] for k in klines]
-        volumes = [k[5] for k in klines]
-        
-        scores = {}
-        
-        # 1. 趋势因子 (EMA交叉)
-        ema_cross = IndicatorCalculator.ema_cross(closes, 20, 50)
-        if ema_cross == "golden_cross":
-            scores["trend"] = 0.8
-        elif ema_cross == "death_cross":
-            scores["trend"] = 0.2
-        else:
-            ema20 = IndicatorCalculator.ema(closes, 20) or 0
-            ema50 = IndicatorCalculator.ema(closes, 50) or 0
-            scores["trend"] = 0.5 + (ema20 - ema50) / ema50 * 5  # 相对位置
-            
-        # 2. 动量因子 (RSI + MACD)
-        rsi = IndicatorCalculator.rsi(closes, 14) or 50
-        macd = IndicatorCalculator.macd(closes)
-        macd_signal = 0.5
-        if macd:
-            macd_signal = 0.5 + (macd.macd - macd.signal) / abs(macd.signal) * 0.5 if macd.signal else 0.5
-            
-        scores["momentum"] = (rsi / 100 + macd_signal) / 2
-        
-        # 3. 波动率因子
-        boll = IndicatorCalculator.bollinger_bands(closes)
-        atr = IndicatorCalculator.atr(highs, lows, closes)
-        
-        if boll and atr:
-            # 布林带宽度适中最好
-            bandwidth = boll.bandwidth
-            vol_score = 0.5
-            if 0.03 < bandwidth < 0.08:  # 适中波动
-                vol_score = 0.7
-            elif bandwidth <= 0.03:  # 低波动
-                vol_score = 0.4
-            else:  # 高波动
-                vol_score = 0.5
-                
-            scores["volatility"] = vol_score
-        else:
-            scores["volatility"] = 0.5
-            
-        # 4. 成交量因子
-        recent_vol = sum(volumes[-10:]) / 10
-        avg_vol = sum(volumes[-50:]) / 50
-        vol_ratio = recent_vol / avg_vol if avg_vol > 0 else 1
-        scores["volume"] = min(vol_ratio / 2, 1)  # 放量是好信号
-        
-        # 5. 持仓量因子 (简化，合约才有)
-        scores["open_interest"] = 0.5  # 默认中性
-        
-        # 6. 资金费率因子
-        try:
-            fr = await binance_client.fetch_funding_rate(symbol)
-            funding_rate = fr.get("fundingRate", 0)
-            # 正费率->空头主导->做空有利
-            scores["funding_rate"] = 0.5 - funding_rate * 100
-        except:
-            scores["funding_rate"] = 0.5
-            
-        # 7. 清算因子 (简化)
-        scores["liquidation"] = 0.5  # 默认中性
-        
-        # 8. 多时间框架因子 (后面单独计算)
-        scores["mtf"] = 0.5
-        
-        # 9. 情绪因子
-        scores["sentiment"] = (self._sentiment_score + 1) / 2
-        
-        return scores
-        
-    async def _get_mtf_signals(self, mtf_klines: Dict[str, List]) -> Dict[str, str]:
-        """获取多时间框架信号"""
-        signals = {}
-        
-        for tf in MTF_TIMEFRAMES:
-            klines = mtf_klines.get(tf, [])
-            
-            if len(klines) < 50:
-                signals[tf] = "neutral"
-                continue
-                
-            closes = [k[4] for k in klines]
-            
-            # EMA交叉
-            ema_cross = IndicatorCalculator.ema_cross(closes, 20, 50)
-            
-            if ema_cross == "golden_cross":
-                signals[tf] = "long"
-            elif ema_cross == "death_cross":
-                signals[tf] = "short"
-            else:
-                # RSI判断
-                rsi = IndicatorCalculator.rsi(closes, 14)
-                if rsi and rsi > 60:
-                    signals[tf] = "long"
-                elif rsi and rsi < 40:
-                    signals[tf] = "short"
-                else:
-                    signals[tf] = "neutral"
-                    
-        return signals
-        
-    def _calculate_mtf_score(self, mtf_signals: Dict[str, str]) -> float:
-        """计算多时间框架得分"""
-        if not mtf_signals:
-            return 0.5
-            
+
+    def _score_long(self, last, prev, last_1m, df_1m, vol_ratio, df_15m, adx):
+        """v3: 做多评分"""
         score = 0
-        for tf, signal in mtf_signals.items():
-            weight = MTF_WEIGHTS.get(tf, 0.33)
-            
-            if signal == "long":
-                score += weight
-            elif signal == "short":
-                score -= weight
-                
-        return (score + 1) / 2  # 归一化到0-1
-        
-    def _determine_direction(self, factor_scores: Dict[str, float]) -> str:
-        """判断交易方向"""
-        # 综合各因子
-        trend = factor_scores.get("trend", 0.5)
-        momentum = factor_scores.get("momentum", 0.5)
-        volume = factor_scores.get("volume", 0.5)
-        
-        avg = (trend + momentum + volume) / 3
-        
-        if avg > 0.55:
-            return "long"
-        elif avg < 0.45:
-            return "short"
-        else:
-            return "neutral"
-            
+        reasons = []
+
+        # 15m趋势确认 (25分)
+        score += 25
+        reasons.append('15m趋势向上')
+
+        # 5m MACD
+        if last.get('macd_golden_cross', False) and last.get('macd_above_zero', False):
+            score += 20
+            reasons.append('5m零轴上金叉')
+        elif last.get('macd_golden_cross', False):
+            score += 12
+            reasons.append('5m金叉')
+        if (last.get('macd_hist', 0) > 0 and prev.get('macd_hist', 0) > 0 and
+                last.get('macd_hist', 0) < prev.get('macd_hist', 0)):
+            score += 5
+            reasons.append('5m MACD柱缩短')
+
+        # 5m Swing底背驰
+        if last.get('divergence_bull', False):
+            score += 20
+            reasons.append('5m底背驰(Swing)')
+
+        # 5m BOLL位置
+        boll_pos = last.get('boll_position', 0.5)
+        if pd.notna(boll_pos):
+            if boll_pos < 0.2:
+                score += 15
+                reasons.append('5m BOLL下轨')
+            elif prev.get('close', 0) < prev.get('boll_mid', 0) and last['close'] > last.get('boll_mid', 0):
+                score += 12
+                reasons.append('5m回踩中轨反弹')
+            elif boll_pos < 0.35:
+                score += 5
+                reasons.append('5m BOLL偏低')
+
+        # 5m KDJ
+        if last.get('kdj_golden_cross', False) and last.get('kdj_k', 50) < 30:
+            score += 15
+            reasons.append('5m KDJ低位金叉')
+        elif last.get('kdj_golden_cross', False):
+            score += 8
+            reasons.append('5m KDJ金叉')
+        if last.get('kdj_j', 50) > 20 and prev.get('kdj_j', 50) < 20:
+            score += 10
+            reasons.append('5m KDJ低位拐头')
+
+        # 5m RSI
+        if last.get('rsi_oversold', False):
+            score += 10
+            reasons.append('5m RSI超卖')
+        if last.get('rsi_bullish_divergence', False):
+            score += 15
+            reasons.append('5m RSI底背离')
+
+        # 成交量
+        if last.get('vol_surge', False):
+            score += 10
+            reasons.append(f'5m放量({vol_ratio:.1f}x)')
+        elif vol_ratio >= 1.0:
+            score += 3
+            reasons.append('5m量能正常')
+
+        # 1m确认（3根K线中2根收阳）
+        recent = df_1m.tail(3)
+        bullish = sum(1 for _, r in recent.iterrows() if r['close'] > r['open'])
+        if bullish >= 2:
+            score += 8
+            reasons.append('1m连续收阳确认')
+        if last_1m.get('kdj_golden_cross', False) or last_1m.get('macd_golden_cross', False):
+            score += 5
+            reasons.append('1m指标金叉')
+
+        # ADX趋势强度加分
+        if pd.notna(adx) and adx > 25:
+            score += 5
+            reasons.append(f'ADX={adx:.0f}趋势强')
+
+        return score, reasons
+
+    def _score_short(self, last, prev, last_1m, df_1m, vol_ratio, df_15m, adx):
+        """v3: 做空评分"""
+        score = 0
+        reasons = []
+
+        score += 25
+        reasons.append('15m趋势向下')
+
+        if last.get('macd_death_cross', False) and not last.get('macd_above_zero', True):
+            score += 20
+            reasons.append('5m零轴下死叉')
+        elif last.get('macd_death_cross', False):
+            score += 12
+            reasons.append('5m死叉')
+        if (last.get('macd_hist', 0) < 0 and prev.get('macd_hist', 0) < 0 and
+                last.get('macd_hist', 0) > prev.get('macd_hist', 0)):
+            score += 5
+            reasons.append('5m MACD柱缩短')
+
+        if last.get('divergence_bear', False):
+            score += 20
+            reasons.append('5m顶背驰(Swing)')
+
+        boll_pos = last.get('boll_position', 0.5)
+        if pd.notna(boll_pos):
+            if boll_pos > 0.8:
+                score += 15
+                reasons.append('5m BOLL上轨')
+            elif boll_pos > 0.7:
+                score += 5
+                reasons.append('5m BOLL偏高')
+
+        if last.get('kdj_death_cross', False) and last.get('kdj_k', 50) > 70:
+            score += 15
+            reasons.append('5m KDJ高位死叉')
+        elif last.get('kdj_death_cross', False):
+            score += 8
+            reasons.append('5m KDJ死叉')
+        if last.get('kdj_j', 50) < 80 and prev.get('kdj_j', 50) > 80:
+            score += 10
+            reasons.append('5m KDJ高位拐头')
+
+        if last.get('rsi_overbought', False):
+            score += 10
+            reasons.append('5m RSI超买')
+        if last.get('rsi_bearish_divergence', False):
+            score += 15
+            reasons.append('5m RSI顶背离')
+
+        if last.get('vol_surge', False):
+            score += 10
+            reasons.append(f'5m放量({vol_ratio:.1f}x)')
+        elif vol_ratio >= 1.0:
+            score += 3
+            reasons.append('5m量能正常')
+
+        recent = df_1m.tail(3)
+        bearish = sum(1 for _, r in recent.iterrows() if r['close'] < r['open'])
+        if bearish >= 2:
+            score += 8
+            reasons.append('1m连续收阴确认')
+        if last_1m.get('kdj_death_cross', False) or last_1m.get('macd_death_cross', False):
+            score += 5
+            reasons.append('1m指标死叉')
+
+        if pd.notna(adx) and adx > 25:
+            score += 5
+            reasons.append(f'ADX={adx:.0f}趋势强')
+
+        return score, reasons
+
     def get_top_signals(self, direction: str = "long", n: int = 5) -> List[SignalEvent]:
         """获取高分信号"""
         filtered = [

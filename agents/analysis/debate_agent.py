@@ -29,27 +29,46 @@ class DebateAgent(BaseAgent):
         default_config = AgentConfig(
             name="多空辩论",
             log_prefix="[多空辩论]",
-            interval=0,  # 事件触发，不定期执行
+            interval=60,  # 事件驱动，execute仅做清理
             enabled=True,
         )
         super().__init__(config or default_config, **kwargs)
-        
+
         self._pending_debates: List[SignalEvent] = []
         self._debate_cache: Dict[str, DebateEvent] = {}
-        
+        self._current_trend: str = "NEUTRAL"
+
     async def _setup_subscriptions(self):
         """设置订阅"""
         await self.subscribe("signal", self._on_signal)
+        await self.subscribe("regime", self._on_regime)
+
+    async def _on_regime(self, event):
+        """接收市场状态事件，获取趋势方向"""
+        self._current_trend = event.trend_direction
         
     async def _on_signal(self, signal: SignalEvent):
         """接收信号事件"""
         if signal.direction == "neutral":
             return
-            
+
+        # v3: 如果趋势不明，直接否决
+        if self._current_trend == "NEUTRAL":
+            self.logger.info(f"{signal.symbol} 15m趋势不明，AI否决开仓")
+            return
+
+        # v3: 信号方向必须与趋势方向一致
+        if signal.trend != "NEUTRAL" and signal.direction == "long" and signal.trend != "UP":
+            self.logger.info(f"{signal.symbol} 信号方向与趋势方向不一致，否决")
+            return
+        if signal.trend != "NEUTRAL" and signal.direction == "short" and signal.trend != "DOWN":
+            self.logger.info(f"{signal.symbol} 信号方向与趋势方向不一致，否决")
+            return
+
         # 添加到辩论队列
         self._pending_debates.append(signal)
         self.logger.debug(f"收到信号加入辩论队列: {signal.symbol}")
-        
+
         # 立即执行辩论
         await self._execute_debate(signal)
         
@@ -85,7 +104,7 @@ class DebateAgent(BaseAgent):
             else:
                 final_confidence = bear_conf * 0.6 + (1 - bull_conf) * 0.4
                 
-            approved = final_confidence >= DEBATE_CONFIDENCE_THRESHOLD / 100
+            approved = final_confidence >= DEBATE_CONFIDENCE_THRESHOLD
             
             # 创建辩论事件
             debate = DebateEvent(
@@ -120,15 +139,16 @@ class DebateAgent(BaseAgent):
             
     def _build_bull_prompt(self, signal: SignalEvent) -> str:
         """构建做多论证prompt"""
-        return f"""你是专业的加密货币分析师。请分析{signal.symbol}做多({signal.direction})的理由。
+        trend = getattr(signal, 'trend', self._current_trend)
+        return f"""你是专业的加密货币分析师。请分析{signal.symbol}做多的理由。
 
-信号评分详情:
-- 趋势分数: {signal.trend_score:.1f}/100
-- 动量分数: {signal.momentum_score:.1f}/100  
-- 波动率分数: {signal.volatility_score:.1f}/100
-- 成交量分数: {signal.volume_score:.1f}/100
-- 多时间框架分数: {signal.mtf_score:.1f}/100
-- 信号总分: {signal.score:.1f}/100
+当前15m趋势方向：{trend}
+信号方向：{signal.direction}
+信号强度：{signal.score:.1f}/100
+信号理由：{getattr(signal, 'reason', '')}
+
+⚠️ 你只能在{trend}方向上辩论，不能逆趋势开仓。
+如果你认为当前趋势不成立，请输出HOLD。
 
 请从以下角度给出3-5个做多的具体理由:
 1. 技术面支持
@@ -141,15 +161,16 @@ class DebateAgent(BaseAgent):
 
     def _build_bear_prompt(self, signal: SignalEvent) -> str:
         """构建做空论证prompt"""
-        return f"""你是专业的加密货币分析师。请分析{signal.symbol}做空({signal.direction})的理由。
+        trend = getattr(signal, 'trend', self._current_trend)
+        return f"""你是专业的加密货币分析师。请分析{signal.symbol}做空的理由。
 
-信号评分详情:
-- 趋势分数: {signal.trend_score:.1f}/100
-- 动量分数: {signal.momentum_score:.1f}/100  
-- 波动率分数: {signal.volatility_score:.1f}/100
-- 成交量分数: {signal.volume_score:.1f}/100
-- 多时间框架分数: {signal.mtf_score:.1f}/100
-- 信号总分: {signal.score:.1f}/100
+当前15m趋势方向：{trend}
+信号方向：{signal.direction}
+信号强度：{signal.score:.1f}/100
+信号理由：{getattr(signal, 'reason', '')}
+
+⚠️ 你只能在{trend}方向上辩论，不能逆趋势开仓。
+如果你认为当前趋势不成立，请输出HOLD。
 
 请从以下角度给出3-5个做空的具体理由:
 1. 技术面阻力
@@ -164,7 +185,7 @@ class DebateAgent(BaseAgent):
         """调用DeepSeek API"""
         if not DEEPSEEK_API_KEY:
             self.logger.warning("DeepSeek API Key未设置，返回默认结果")
-            return '{"confidence": 60, "key_reasons": ["模拟分析"], "risk_factors": []}'
+            return '{"confidence": 70, "key_reasons": ["模拟分析 - 无API Key"], "risk_factors": ["未经AI验证"]}'
             
         try:
             async with httpx.AsyncClient(timeout=30) as client:

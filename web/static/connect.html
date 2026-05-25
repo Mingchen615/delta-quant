@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>接入交易所 - Delta Quant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; }
+        .card { background: #1e293b; border-radius: 12px; padding: 24px; }
+        .btn-primary { background: #3b82f6; color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; border: none; }
+        .btn-primary:hover { background: #2563eb; }
+        .input-field { background: #374151; border: 1px solid #4b5563; border-radius: 8px; padding: 10px 14px; color: white; width: 100%; }
+        .input-field:focus { outline: none; border-color: #3b82f6; }
+        .status-green { color: #4ade80; }
+        .status-red { color: #f87171; }
+    </style>
+</head>
+<body class="min-h-screen p-6">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex items-center gap-4 mb-8">
+            <a href="/" class="text-blue-400 hover:underline">&larr; 返回</a>
+            <h1 class="text-2xl font-bold">接入交易所</h1>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- 币安 -->
+            <div class="card">
+                <div class="flex items-center gap-3 mb-6">
+                    <span class="text-3xl">🟡</span>
+                    <h2 class="text-xl font-semibold">币安 Binance</h2>
+                </div>
+
+                <div id="binance-qr" class="text-center mb-4">
+                    <button onclick="loadQR('binance')" class="btn-primary mb-4">生成扫码二维码</button>
+                    <div id="binance-qr-img"></div>
+                </div>
+
+                <div class="text-sm text-gray-400 mb-4" id="binance-guide">
+                    点击上方按钮生成二维码，扫码后在币安App内创建API Key
+                </div>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-sm text-gray-400">API Key</label>
+                        <input type="text" id="binance-key" class="input-field" placeholder="输入币安 API Key">
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-400">API Secret</label>
+                        <input type="password" id="binance-secret" class="input-field" placeholder="输入币安 API Secret">
+                    </div>
+                    <button onclick="verifyExchange('binance')" class="btn-primary w-full">
+                        验证并接入
+                    </button>
+                    <div id="binance-result" class="text-sm"></div>
+                </div>
+            </div>
+
+            <!-- 欧易 -->
+            <div class="card">
+                <div class="flex items-center gap-3 mb-6">
+                    <span class="text-3xl">🔵</span>
+                    <h2 class="text-xl font-semibold">欧易 OKX</h2>
+                </div>
+
+                <div id="okx-qr" class="text-center mb-4">
+                    <button onclick="loadQR('okx')" class="btn-primary mb-4">生成扫码二维码</button>
+                    <div id="okx-qr-img"></div>
+                </div>
+
+                <div class="text-sm text-gray-400 mb-4" id="okx-guide">
+                    点击上方按钮生成二维码，扫码后在欧易App内创建API Key
+                </div>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-sm text-gray-400">API Key</label>
+                        <input type="text" id="okx-key" class="input-field" placeholder="输入欧易 API Key">
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-400">API Secret</label>
+                        <input type="password" id="okx-secret" class="input-field" placeholder="输入欧易 API Secret">
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-400">Passphrase</label>
+                        <input type="password" id="okx-passphrase" class="input-field" placeholder="输入欧易 Passphrase">
+                    </div>
+                    <button onclick="verifyExchange('okx')" class="btn-primary w-full">
+                        验证并接入
+                    </button>
+                    <div id="okx-result" class="text-sm"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 凭证状态 -->
+        <div class="card mt-6">
+            <h2 class="text-xl font-semibold mb-4">接入状态</h2>
+            <div id="credential-status" class="text-gray-400">加载中...</div>
+        </div>
+    </div>
+
+    <script>
+        async function loadQR(exchange) {
+            try {
+                const res = await fetch(`/api/connect/qr/${exchange}`);
+                const data = await res.json();
+                const imgDiv = document.getElementById(`${exchange}-qr-img`);
+                if (data.qr_base64) {
+                    imgDiv.innerHTML = `<img src="data:image/png;base64,${data.qr_base64}" class="mx-auto" style="max-width:200px">`;
+                } else {
+                    imgDiv.innerHTML = '<span class="text-red-400">QR Code生成失败</span>';
+                }
+                const guideDiv = document.getElementById(`${exchange}-guide`);
+                if (data.url) {
+                    guideDiv.innerHTML = data.url.replace(/\n/g, '<br>');
+                }
+            } catch (e) {
+                document.getElementById(`${exchange}-qr-img`).innerHTML =
+                    '<span class="text-red-400">加载失败</span>';
+            }
+        }
+
+        async function verifyExchange(exchange) {
+            const key = document.getElementById(`${exchange}-key`).value;
+            const secret = document.getElementById(`${exchange}-secret`).value;
+            const passphrase = document.getElementById(`${exchange}-passphrase`)?.value || '';
+
+            if (!key || !secret) {
+                document.getElementById(`${exchange}-result`).innerHTML =
+                    '<span class="status-red">请填写 API Key 和 Secret</span>';
+                return;
+            }
+
+            document.getElementById(`${exchange}-result`).innerHTML =
+                '<span class="text-yellow-400">验证中...</span>';
+
+            try {
+                const res = await fetch('/api/connect/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        exchange,
+                        api_key: key,
+                        api_secret: secret,
+                        passphrase,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById(`${exchange}-result`).innerHTML =
+                        '<span class="status-green">接入成功!</span>';
+                    loadCredentialStatus();
+                } else {
+                    document.getElementById(`${exchange}-result`).innerHTML =
+                        `<span class="status-red">接入失败: ${data.message || data.error || '未知错误'}</span>`;
+                }
+            } catch (e) {
+                document.getElementById(`${exchange}-result`).innerHTML =
+                    `<span class="status-red">请求失败: ${e.message}</span>`;
+            }
+        }
+
+        async function loadCredentialStatus() {
+            try {
+                const res = await fetch('/api/credentials/status');
+                const data = await res.json();
+                const div = document.getElementById('credential-status');
+                const binanceStatus = data.binance ?
+                    '<span class="status-green">已接入</span>' : '<span class="text-gray-400">未接入</span>';
+                const okxStatus = data.okx ?
+                    '<span class="status-green">已接入</span>' : '<span class="text-gray-400">未接入</span>';
+                div.innerHTML = `
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="p-3 bg-gray-800 rounded">
+                            <span>🟡 币安: </span>${binanceStatus}
+                        </div>
+                        <div class="p-3 bg-gray-800 rounded">
+                            <span>🔵 欧易: </span>${okxStatus}
+                        </div>
+                    </div>`;
+            } catch (e) {
+                document.getElementById('credential-status').innerHTML =
+                    '<span class="text-gray-400">无法获取状态</span>';
+            }
+        }
+
+        loadCredentialStatus();
+    </script>
+</body>
+</html>

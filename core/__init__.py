@@ -5,6 +5,7 @@ Core模块 - 系统核心组件
 
 from .base_agent import BaseAgent, AgentState
 from .message_bus import MessageBus, message_bus
+from .event_log import EventCollector
 from .event_types import (
     MarketDataEvent,
     SignalEvent,
@@ -27,6 +28,7 @@ __all__ = [
     "AgentState",
     "MessageBus",
     "message_bus",
+    "EventCollector",
     "MarketDataEvent",
     "SignalEvent",
     "DebateEvent",

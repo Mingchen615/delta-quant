@@ -11,8 +11,6 @@ from loguru import logger
 
 from core.base_agent import BaseAgent, AgentConfig
 from core.event_types import OrderFlowEvent
-from exchange.binance_client import binance_client
-from data.market_data import market_data_manager
 from config import ORDERBOOK_DEPTH, ORDERBOOK_IMBALANCE_THRESHOLD
 
 
@@ -32,13 +30,18 @@ class OrderFlowAgent(BaseAgent):
             enabled=True,
         )
         super().__init__(config or default_config, **kwargs)
-        
+
         self._symbols = ["BTC/USDT", "ETH/USDT"]
         self._orderflow_cache: Dict[str, OrderFlowEvent] = {}
+        self._exchange_router = None
+
+    def set_router(self, router):
+        """设置交易所路由器"""
+        self._exchange_router = router
         
     async def _setup_subscriptions(self):
         """设置订阅"""
-        await self.subscribe("signal.*", self._on_signal)
+        await self.subscribe("signal", self._on_signal)
         
     async def _on_signal(self, event):
         """收到信号时增加监控频率"""
@@ -51,21 +54,22 @@ class OrderFlowAgent(BaseAgent):
         """分析订单流"""
         try:
             for symbol in self._symbols:
-                orderbook = await binance_client.fetch_order_book(symbol, ORDERBOOK_DEPTH)
-                
-                if not orderbook:
+                # 聚合双平台订单簿
+                aggregated = await self._aggregate_orderbook(symbol)
+
+                if not aggregated:
                     continue
-                    
+
                 # 计算不平衡度
-                imbalance = self._calculate_imbalance(orderbook)
-                
+                imbalance = self._calculate_imbalance(aggregated)
+
                 # 检测大单
-                large_bids, large_asks = self._detect_large_orders(orderbook)
-                
+                large_bids, large_asks = self._detect_large_orders(aggregated)
+
                 # 计算买卖压力
-                bid_vol = sum(qty for price, qty in orderbook["bids"][:ORDERBOOK_DEPTH])
-                ask_vol = sum(qty for price, qty in orderbook["asks"][:ORDERBOOK_DEPTH])
-                
+                bid_vol = sum(qty for price, qty in aggregated["bids"][:ORDERBOOK_DEPTH])
+                ask_vol = sum(qty for price, qty in aggregated["asks"][:ORDERBOOK_DEPTH])
+
                 # 创建事件
                 event = OrderFlowEvent(
                     symbol=symbol,
@@ -76,13 +80,14 @@ class OrderFlowAgent(BaseAgent):
                     large_asks=large_asks,
                     timestamp=datetime.now(),
                 )
-                
+
                 # 缓存
                 self._orderflow_cache[symbol] = event
-                
+
                 # 发布
                 await self.publish(f"orderflow.{symbol}", event)
-                
+                await self.publish("order_flow", event)
+
                 # 日志（仅显示不平衡度高的）
                 if abs(imbalance) > ORDERBOOK_IMBALANCE_THRESHOLD:
                     direction = "买入" if imbalance > 0 else "卖出"
@@ -90,9 +95,43 @@ class OrderFlowAgent(BaseAgent):
                         f"订单流 {symbol}: {direction}压力 "
                         f"(不平衡度: {imbalance:.2%})"
                     )
-                    
+
         except Exception as e:
             self.logger.error(f"订单流分析出错: {e}")
+
+    async def _aggregate_orderbook(self, symbol: str) -> Optional[Dict]:
+        """聚合双平台订单簿"""
+        all_bids = []
+        all_asks = []
+
+        if self._exchange_router:
+            for name, exchange in self._exchange_router.exchanges.items():
+                if not exchange.is_connected:
+                    continue
+                try:
+                    ob = await exchange.get_orderbook(symbol, ORDERBOOK_DEPTH)
+                    all_bids.extend(ob.bids)
+                    all_asks.extend(ob.asks)
+                except Exception:
+                    continue
+        else:
+            try:
+                from exchange.binance_client import binance_client
+                ob = await binance_client.fetch_order_book(symbol, ORDERBOOK_DEPTH)
+                if ob:
+                    all_bids.extend([(p, q) for p, q in ob.get("bids", [])])
+                    all_asks.extend([(p, q) for p, q in ob.get("asks", [])])
+            except Exception:
+                return None
+
+        if not all_bids and not all_asks:
+            return None
+
+        # 聚合：按价格排序
+        all_bids.sort(key=lambda x: x[0], reverse=True)
+        all_asks.sort(key=lambda x: x[0])
+
+        return {"bids": all_bids, "asks": all_asks}
             
     def _calculate_imbalance(self, orderbook: Dict) -> float:
         """

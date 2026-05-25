@@ -17,40 +17,43 @@ class EventType(str, Enum):
     ORDERBOOK = "orderbook"
     TRADE = "trade"
     AGG_TRADE = "agg_trade"
-    
+
     # 信号与决策
     SIGNAL = "signal"
     DEBATE = "debate"
     TRADE_PROPOSAL = "trade_proposal"
-    
+
     # 风控
     RISK_CHECK = "risk_check"
     PORTFOLIO_CHECK = "portfolio_check"
-    
+
     # 订单
     ORDER_REQUEST = "order_request"
     ORDER_SUBMITTED = "order_submitted"
     ORDER_FILLED = "order_filled"
     ORDER_CANCELLED = "order_cancelled"
     ORDER_FAILED = "order_failed"
-    
+
     # 持仓
     POSITION_OPENED = "position_opened"
     POSITION_CLOSED = "position_closed"
     POSITION_UPDATED = "position_updated"
     STOP_LOSS_TRIGGERED = "stop_loss_triggered"
     TAKE_PROFIT_TRIGGERED = "take_profit_triggered"
-    
+
     # Agent状态
     AGENT_STATUS = "agent_status"
     AGENT_ERROR = "agent_error"
-    
+
     # 数据采集
     WHALE_ACTIVITY = "whale_activity"
     SENTIMENT = "sentiment"
     CORRELATION = "correlation"
     ORDER_FLOW = "order_flow"
     REGIME = "regime"
+
+    # v9.0 套利
+    ARBITRAGE = "arbitrage"
 
 
 class MarketDataEvent(BaseModel):
@@ -98,11 +101,11 @@ class SignalEvent(BaseModel):
     direction: str  # "long" or "short"
     score: float = 0  # 0-100
     confidence: float = 0  # 0-100
-    
+
     # 9因子分数
     factor_scores: Dict[str, float] = {}
     factor_weights: Dict[str, float] = {}
-    
+
     # 因子详情
     trend_score: float = 0
     momentum_score: float = 0
@@ -113,12 +116,18 @@ class SignalEvent(BaseModel):
     liquidation_score: float = 0
     mtf_score: float = 0
     sentiment_score: float = 0
-    
+
     # 多时间框架信号
     mtf_signals: Dict[str, str] = {}  # {"15m": "long", "1h": "long", "4h": "neutral"}
-    
+
     timestamp: datetime = Field(default_factory=datetime.now)
     is_mainstream: bool = True  # 是否为主流币
+
+    # v3新增字段
+    trend: str = "NEUTRAL"  # 'UP' / 'DOWN' / 'NEUTRAL'
+    atr: float = 0  # 5m ATR值
+    adx: float = 0  # 15m ADX值
+    vol_ratio: float = 0  # 5m成交量比率
 
 
 class DebateEvent(BaseModel):
@@ -148,54 +157,64 @@ class DebateEvent(BaseModel):
 class TradeProposal(BaseModel):
     """交易提案 - 仓位决策输出"""
     event_type: EventType = EventType.TRADE_PROPOSAL
-    
+
     symbol: str
     direction: str  # "long" or "short"
-    
+
     # 仓位参数
     leverage: int = 20
     position_pct: float = 0.03  # 账户比例 3%
-    
+
     # 止损止盈
     stop_loss_pct: float = -0.05  # -5%
     take_profit_pct: float = 0.20  # 20%
-    
+
     # R:R
     risk_reward_ratio: float = 4.0
-    
+
     # 信号来源
     signal_score: float = 0
     debate_confidence: float = 0
     mtf_confirmed: bool = False
-    
+
     timestamp: datetime = Field(default_factory=datetime.now)
     expires_at: Optional[datetime] = None  # 信号过期时间
+
+    # v3新增字段
+    atr: float = 0  # ATR值（传递给PositionAgent）
+    trailing_trigger: float = 0.50  # 移动止盈触发阈值
+    trailing_step: float = 0.30  # 移动止盈回撤步
+    stop_loss: float = 0  # 止损价（绝对值）
+    take_profit: float = 0  # 止盈价（绝对值）
 
 
 class RiskCheckResult(BaseModel):
     """风控检查结果"""
     event_type: EventType = EventType.RISK_CHECK
-    
+
     symbol: str
     proposal: TradeProposal
-    
+
     approved: bool = False
     reasons: List[str] = []
     rejected_reasons: List[str] = []
-    
+
     # 检查项
     check_single_risk: bool = True  # 单笔风险
     check_daily_risk: bool = True   # 日风险
     check_drawdown: bool = True     # 回撤检查
     check_position_limit: bool = True  # 持仓限制
-    
+
     # 当前风险值
     current_single_risk: float = 0
     current_daily_risk: float = 0
     current_drawdown: float = 0
     current_positions: int = 0
-    
+
     timestamp: datetime = Field(default_factory=datetime.now)
+
+    # v3新增
+    trend_direction: str = "NEUTRAL"  # 用于NEUTRAL趋势拒绝
 
 
 class OrderEvent(BaseModel):
@@ -323,4 +342,22 @@ class RegimeEvent(BaseModel):
     adx: float = 0
     atr: float = 0
     atr_percentile: float = 0  # ATR在历史中的百分位
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+    # v3新增字段
+    trend_direction: str = "NEUTRAL"  # 'UP' / 'DOWN' / 'NEUTRAL'
+    trend_scores: Dict[str, int] = {}  # 每个币的趋势分数
+
+
+class ArbitrageEvent(BaseModel):
+    """套利机会事件"""
+    event_type: EventType = EventType.ARBITRAGE
+    symbol: str
+    buy_exchange: str  # "binance" / "okx"
+    sell_exchange: str
+    buy_price: float
+    sell_price: float
+    spread: float  # 绝对价差
+    spread_pct: float  # 价差百分比
+    net_profit_pct: float  # 扣除手续费后净利
     timestamp: datetime = Field(default_factory=datetime.now)
